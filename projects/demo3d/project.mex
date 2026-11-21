@@ -1,0 +1,24 @@
+; Projet d'exemple MEX : démonstration 3D (personnage, physique, lumières, ombres).
+
+[application]
+name = "Démo 3D"
+main_scene = "res://principal.scn"
+
+[display]
+width = 960
+height = 540
+
+[rendering]
+clear_color = Color(0.55, 0.7, 0.9, 1)
+
+[input]
+avancer = ["W", "Z", "Up"]
+reculer = ["S", "Down"]
+gauche = ["A", "Q"]
+droite = ["D"]
+camera_gauche = ["Left"]
+camera_droite = ["Right"]
+sauter = ["Space"]
+lancer = ["E"]
+recommencer = ["R"]
+quitter = ["Escape"]

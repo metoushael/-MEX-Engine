@@ -1,0 +1,44 @@
+extends CharacterBody2D
+# Personnage contrôlé au clavier : déplacement, gravité et saut.
+
+@export var vitesse: float = 260.0
+@export var force_saut: float = 560.0
+@export var acceleration: float = 2400.0
+
+var gravite = 980.0
+var depart = Vector2()
+@onready var sprite = $Sprite
+
+func _ready():
+	gravite = ProjectSettings.get_setting("physics/gravity")
+	depart = position
+
+func _physics_process(delta):
+	var direction = Input.get_axis("gauche", "droite")
+	velocity.x = move_toward(velocity.x, direction * vitesse, acceleration * delta)
+
+	if not is_on_floor():
+		velocity.y += gravite * delta
+	elif Input.is_action_just_pressed("sauter"):
+		velocity.y = -force_saut
+
+	if direction != 0:
+		sprite.flip_h = direction < 0
+
+	move_and_slide()
+
+	# Animation selon le mouvement.
+	if not is_on_floor():
+		sprite.play("saut" if velocity.y < 0 else "chute")
+	elif abs(velocity.x) > 20:
+		sprite.play("course")
+	else:
+		sprite.play("repos")
+
+	# Tombé dans un trou : retour au départ.
+	if position.y > 800:
+		reapparaitre()
+
+func reapparaitre():
+	position = depart
+	velocity = Vector2.ZERO

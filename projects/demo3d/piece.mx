@@ -1,0 +1,22 @@
+extends Area3D
+# Pièce à ramasser : tourne sur elle-même, flotte, et disparaît au contact du joueur.
+
+signal ramassee
+
+var temps = 0.0
+var hauteur = 0.0
+@onready var maillage = $Maillage
+
+func _ready():
+	hauteur = maillage.position.y
+	temps = position.x * 0.7 + position.z * 0.3
+
+func _process(delta):
+	temps += delta
+	maillage.rotate_y(delta * 3.0)
+	maillage.position = Vector3(0, hauteur + sin(temps * 2.5) * 0.12, 0)
+
+func _on_body_entered(corps):
+	if corps.is_in_group("joueur"):
+		ramassee.emit()
+		queue_free()

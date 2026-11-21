@@ -1,0 +1,9 @@
+extends RigidBody3D
+# Balle lancée par le joueur : disparaît au bout de quelques secondes.
+
+var age = 0.0
+
+func _process(delta):
+	age += delta
+	if age > 8.0:
+		queue_free()

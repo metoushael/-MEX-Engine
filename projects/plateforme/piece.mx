@@ -1,0 +1,13 @@
+extends Area2D
+# Pièce à ramasser : tourne sur place (AnimationPlayer) et disparaît au contact du joueur.
+
+signal ramassee
+
+func _ready():
+	# Décale l'animation d'une pièce à l'autre pour qu'elles ne tournent pas toutes ensemble.
+	$AnimationPlayer.seek(fmod(position.x * 0.01, 1.2))
+
+func _on_body_entered(corps):
+	if corps.is_in_group("joueur"):
+		ramassee.emit()
+		queue_free()

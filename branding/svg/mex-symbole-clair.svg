@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 472 438" width="472" height="438">
+<title>MEX — Metoushela Engine X</title>
+<defs>
+<linearGradient id="ambre2" gradientUnits="userSpaceOnUse" x1="0" y1="63.0" x2="0" y2="375.0"><stop offset="0" stop-color="#FFA31A"/><stop offset="1" stop-color="#FF6F00"/></linearGradient>
+<linearGradient id="braise2" gradientUnits="userSpaceOnUse" x1="0" y1="63.0" x2="0" y2="375.0"><stop offset="0" stop-color="#FF8A00"/><stop offset="1" stop-color="#E85400"/></linearGradient>
+</defs>
+<path d="M63.00 63.00 L135.00 63.00 L218.00 159.83 L178.00 206.50 L126.00 145.83 L126.00 271.83 L63.00 345.33 Z M409.00 345.33 L346.00 271.83 L346.00 145.83 L294.00 206.50 L254.00 159.83 L337.00 63.00 L409.00 63.00 Z" fill="#11132C"/>
+<path d="M294.00 206.50 L149.57 375.00 L69.57 375.00 L254.00 159.83 Z" fill="url(#braise2)"/>
+<path d="M218.00 159.83 L402.43 375.00 L322.43 375.00 L178.00 206.50 Z" fill="url(#ambre2)"/>
+</svg>

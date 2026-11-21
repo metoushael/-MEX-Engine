@@ -1,0 +1,14 @@
+# Fins de ligne identiques sur tous les systèmes (scènes, scripts, sources).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.bmp binary
+*.gif binary
+*.tga binary
+*.wav binary
+*.ttf binary
+*.pck binary
+*.ico binary
+*.icns binary
