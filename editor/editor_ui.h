@@ -6,6 +6,7 @@
 
 #include "imgui.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace EditorUI {
@@ -35,6 +36,24 @@ inline void icon_label(const ImVec2 &p_pos, const char *p_icon, ImU32 p_icon_col
 	ImDrawList *dl = ImGui::GetWindowDrawList();
 	dl->AddText(p_pos, p_icon_color, p_icon);
 	dl->AddText(ImVec2(p_pos.x + ImGui::GetFontSize() * 1.45f, p_pos.y), p_text_color, p_text);
+}
+
+// Taille d'ouverture d'une boîte de dialogue, en unités d'interface, bornée par la fenêtre
+// principale : sur un petit écran la boîte s'ouvre déjà entière.
+inline ImVec2 dialog_size(float p_width, float p_height) {
+	const ImVec2 work = ImGui::GetMainViewport()->WorkSize;
+	const float margin = S(16.0f);
+	return ImVec2(std::max(std::min(S(p_width), work.x - margin), 1.0f), std::max(std::min(S(p_height), work.y - margin), 1.0f));
+}
+
+// Texte d'aide, en couleur atténuée, qui revient à la ligne à la largeur du panneau (un
+// panneau étroit ne coupe pas la phrase).
+inline void hint(const char *p_text) {
+	ImGui::PushTextWrapPos(0.0f);
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+	ImGui::TextUnformatted(p_text);
+	ImGui::PopStyleColor();
+	ImGui::PopTextWrapPos();
 }
 
 // Libellé d'un nœud d'arbre créé avec un texte vide (TreeNodeEx(id, flags, "%s", "")) :

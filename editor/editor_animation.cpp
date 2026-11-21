@@ -165,7 +165,7 @@ void EditorNode::_draw_animation_dock() {
 		return;
 	}
 	if (!target) {
-		ImGui::TextDisabled("Sélectionnez un AnimationPlayer ou un AnimatedSprite2D pour modifier ses animations.");
+		EditorUI::hint("Sélectionnez un AnimationPlayer ou un AnimatedSprite2D pour modifier ses animations.");
 		ImGui::End();
 		return;
 	}
@@ -393,7 +393,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 		ImGui::EndPopup();
 	}
 	if (anim_current.empty()) {
-		ImGui::TextDisabled("Créez une animation, puis ajoutez des pistes : chaque piste anime une propriété d'un nœud.");
+		EditorUI::hint("Créez une animation, puis ajoutez des pistes : chaque piste anime une propriété d'un nœud.");
 		return;
 	}
 	ImGui::SameLine();
@@ -590,7 +590,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 
 	const Array tracks = p_player->get_track_list(anim_current);
 	if (tracks.is_empty()) {
-		ImGui::TextDisabled("Aucune piste. Choisissez un nœud et une propriété ci-dessus, puis « Ajouter ».");
+		EditorUI::hint("Aucune piste. Choisissez un nœud et une propriété ci-dessus, puis « Ajouter ».");
 	}
 	for (const Variant &track_name : tracks.vec()) {
 		const String track = track_name.as_string();
@@ -709,7 +709,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 
 	if (anim_selected_key < 0) {
 		ImGui::AlignTextToFramePadding();
-		ImGui::TextDisabled("Cliquez sur une clé pour la modifier, glissez-la pour la déplacer. Cliquez sur la règle pour déplacer le curseur de temps.");
+		EditorUI::hint("Cliquez sur une clé pour la modifier, glissez-la pour la déplacer. Cliquez sur la règle pour déplacer le curseur de temps.");
 	}
 	if (!remove_track.empty()) {
 		_anim_end_preview();

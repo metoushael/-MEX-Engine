@@ -58,6 +58,7 @@ CHEVRON_RIGHT = chevron-right
 CHEVRON_DOWN = chevron-down
 CLOCK = clock
 PALETTE = palette
+MENU = menu
 MONITOR = monitor
 KEYBOARD = keyboard
 SUN = sun

@@ -310,7 +310,7 @@ void EditorNode::_draw_project_settings() {
 	bool changed = false;
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(ES(640), ES(560)), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(EditorUI::dialog_size(640, 560), ImGuiCond_Appearing);
 	if (!ImGui::Begin("Paramètres du projet###ProjectSettings", &settings_open, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
 		ImGui::End();
 		return;
@@ -368,6 +368,12 @@ void EditorNode::_draw_project_settings() {
 			edit_int("Largeur", "display/width", 64, 7680);
 			edit_int("Hauteur", "display/height", 64, 4320);
 			edit_bool("Fenêtre redimensionnable", "display/resizable");
+			edit_int("Largeur minimale", "display/min_width", 0, 7680);
+			ImGui::SetItemTooltip("Le joueur ne peut pas réduire la fenêtre du jeu en dessous de cette largeur (0 : pas de limite)");
+			edit_int("Hauteur minimale", "display/min_height", 0, 4320);
+			ImGui::SetItemTooltip("Le joueur ne peut pas réduire la fenêtre du jeu en dessous de cette hauteur (0 : pas de limite)");
+			edit_bool("Barre de titre sombre", "display/dark_title_bar");
+			ImGui::SetItemTooltip("Barre de titre de la fenêtre du jeu en version sombre (Windows 10 et 11, GNOME et environnements proches)");
 			edit_bool("Plein écran", "display/fullscreen");
 			edit_bool("Synchronisation verticale", "display/vsync");
 

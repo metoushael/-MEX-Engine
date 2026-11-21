@@ -58,14 +58,16 @@ void EditorNode::_draw_scene_dock() {
 	}
 
 	Node *selected = _get_selected();
-	if (ImGui::Button(ICON_PLUS "  Nœud")) {
+	// Dock étroit : les deux boutons ne gardent que leur icône (l'infobulle dit le reste).
+	const bool compact_buttons = ImGui::GetContentRegionAvail().x < ImGui::CalcTextSize(ICON_PLUS "  Nœud" ICON_FILE_SCENE "  Instancier").x + ImGui::GetStyle().FramePadding.x * 4.0f + ImGui::GetStyle().ItemSpacing.x;
+	if (ImGui::Button(compact_buttons ? ICON_PLUS "###add_node" : ICON_PLUS "  Nœud###add_node")) {
 		create_dialog.open_request = true;
 		create_dialog.as_root = false;
 		create_dialog.parent_id = (selected && _is_editable(selected) ? selected : scene_root)->get_instance_id();
 	}
 	ImGui::SetItemTooltip("Ajouter un nœud enfant au nœud sélectionné");
 	ImGui::SameLine();
-	if (ImGui::Button(ICON_FILE_SCENE "  Instancier")) {
+	if (ImGui::Button(compact_buttons ? ICON_FILE_SCENE "###instance" : ICON_FILE_SCENE "  Instancier###instance")) {
 		const ObjectID parent_id = (selected && _is_editable(selected) ? selected : scene_root)->get_instance_id();
 		_open_file_dialog("Instancier une scène", { "scn" }, false, [this, parent_id](const String &p_path) {
 			_instance_scene(p_path, Object::cast_to<Node>(ObjectDB::get_instance(parent_id)));
@@ -583,7 +585,7 @@ void EditorNode::_draw_fs_grid() {
 	String enter_dir;
 	int column = 0;
 	if (dir->children.empty()) {
-		ImGui::TextDisabled("Ce dossier est vide.");
+		EditorUI::hint("Ce dossier est vide.");
 	}
 	for (const FsEntry &entry : dir->children) {
 		ImGui::PushID(entry.path.c_str());
@@ -702,7 +704,19 @@ void EditorNode::_draw_filesystem_dock() {
 	ImGui::SetItemTooltip("%s", pref_files_grid ? "Afficher l'arborescence" : "Afficher une grille de miniatures");
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	ImGui::InputTextWithHint("##fsfilter", ICON_SEARCH "  Filtrer les fichiers", &fs_filter);
+	{
+		// L'indication se raccourcit avec le champ plutôt que d'être coupée.
+		const float room = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().FramePadding.x * 2.0f;
+		const char *hint = ICON_SEARCH "  Filtrer les fichiers";
+		if (ImGui::CalcTextSize(hint).x > room) {
+			hint = ICON_SEARCH "  Filtrer";
+		}
+		if (ImGui::CalcTextSize(hint).x > room) {
+			hint = ICON_SEARCH;
+		}
+		ImGui::InputTextWithHint("##fsfilter", hint, &fs_filter);
+	}
+	ImGui::SetItemTooltip("Filtrer les fichiers par nom");
 
 	// --- Liste, puis fiche du fichier sélectionné ---
 	const bool show_panel = !fs_selected.empty() && std::find(fs_files.begin(), fs_files.end(), fs_selected) != fs_files.end();
@@ -727,7 +741,7 @@ void EditorNode::_draw_filesystem_dock() {
 			ImGui::PopID();
 		}
 		if (shown == 0) {
-			ImGui::TextDisabled("Aucun fichier ne correspond.");
+			EditorUI::hint("Aucun fichier ne correspond.");
 		}
 	} else if (pref_files_grid) {
 		_draw_fs_grid();
@@ -908,7 +922,7 @@ void EditorNode::_draw_dialogs() {
 		ImGui::OpenPopup("###FileDialog");
 	}
 	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(ES(600), ES(460)), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(EditorUI::dialog_size(600, 460), ImGuiCond_Appearing);
 	if (ImGui::BeginPopupModal((file_dialog.title + "###FileDialog").c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings)) {
 		String chosen;
 		ImGui::SetNextItemWidth(-FLT_MIN);
@@ -1038,7 +1052,7 @@ void EditorNode::_draw_create_node_dialog() {
 		ImGui::OpenPopup("Créer un nœud###CreateNode");
 	}
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(ES(440), ES(540)), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(EditorUI::dialog_size(440, 540), ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal("Créer un nœud###CreateNode", nullptr, ImGuiWindowFlags_NoSavedSettings)) {
 		return;
 	}

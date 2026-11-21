@@ -1,8 +1,15 @@
 #include "display_server.h"
 
+#include "window_platform.h"
+
 #include <SDL.h>
 
+#include <algorithm>
+#include <cstdlib>
+
 DisplayServer *DisplayServer::singleton = nullptr;
+
+static SDL_HitTestResult SDLCALL _sdl_hit_test(SDL_Window *p_window, const SDL_Point *p_point, void *p_data);
 
 DisplayServer::DisplayServer() {
 	singleton = this;
@@ -85,18 +92,21 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 			}
 		}
 	}
-	Uint32 flags = SDL_WINDOW_ALLOW_HIGHDPI;
+	// Fenêtre sans décoration sous Windows : elle garde le style d'une fenêtre ordinaire
+	// (ancrage aux bords de l'écran, animations, ombre, redimensionnement par les bords).
+	SDL_SetHint("SDL_BORDERLESS_WINDOWED_STYLE", "1");
+	SDL_SetHint("SDL_BORDERLESS_RESIZABLE_STYLE", "1");
+	// La fenêtre est créée cachée, puis montrée une fois entièrement réglée (barre de titre,
+	// taille minimale, agrandissement) : elle n'apparaît jamais dans un état intermédiaire.
+	Uint32 flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN;
 	if (p_options.resizable) {
 		flags |= SDL_WINDOW_RESIZABLE;
-	}
-	if (p_options.maximized) {
-		flags |= SDL_WINDOW_MAXIMIZED;
 	}
 	if (p_options.fullscreen) {
 		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 	}
-	if (p_options.hidden) {
-		flags |= SDL_WINDOW_HIDDEN;
+	if (p_options.borderless) {
+		flags |= SDL_WINDOW_BORDERLESS;
 	}
 	window = SDL_CreateWindow(p_options.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
 	if (!window) {
@@ -124,7 +134,216 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 		print_error(String("SDL_CreateRenderer: ") + SDL_GetError());
 		return ERR_CANT_CREATE;
 	}
+
+	// Réglages de la fenêtre, après la création du moteur de rendu : SDL peut recréer la
+	// fenêtre du système à ce moment-là (passage à OpenGL).
+	resizable = p_options.resizable;
+	borderless = p_options.borderless;
+	dark_title_bar = p_options.dark_title_bar;
+	WindowPlatform::install_maximize_fix(window);
+	if (borderless) {
+		SDL_SetWindowHitTest(window, _sdl_hit_test, this);
+	}
+	_apply_title_bar_theme();
+	min_width = p_options.min_width;
+	min_height = p_options.min_height;
+	if (p_options.scale_with_screen && screen_scale > 1.0f) {
+		min_width = (int)((float)min_width * screen_scale);
+		min_height = (int)((float)min_height * screen_scale);
+	}
+	_apply_min_size();
+	if (p_options.maximized && !p_options.fullscreen) {
+		SDL_MaximizeWindow(window);
+	}
+	if (!p_options.hidden) {
+		SDL_ShowWindow(window);
+	}
 	return OK;
+}
+
+// ---------------------------------------------------------------------------
+// Taille et état de la fenêtre
+// ---------------------------------------------------------------------------
+Size2 DisplayServer::window_get_logical_size() const {
+	int w = 0, h = 0;
+	if (window) {
+		SDL_GetWindowSize(window, &w, &h);
+	}
+	return Size2((real_t)w, (real_t)h);
+}
+
+Size2 DisplayServer::screen_get_usable_size() const {
+	SDL_Rect usable;
+	const int index = window ? std::max(SDL_GetWindowDisplayIndex(window), 0) : 0;
+	if (SDL_GetDisplayUsableBounds(index, &usable) == 0 && usable.w > 0 && usable.h > 0) {
+		return Size2((real_t)usable.w, (real_t)usable.h);
+	}
+	SDL_DisplayMode mode;
+	if (SDL_GetDesktopDisplayMode(index, &mode) == 0) {
+		return Size2((real_t)mode.w, (real_t)mode.h);
+	}
+	return Size2();
+}
+
+void DisplayServer::_apply_min_size() {
+	if (!window) {
+		return;
+	}
+	int w = std::max(min_width, 1), h = std::max(min_height, 1);
+	// Jamais plus que la place disponible : sinon la fenêtre ne tiendrait pas sur un petit écran.
+	const Size2 usable = screen_get_usable_size();
+	if (usable.x > 0 && usable.y > 0) {
+		// Une barre de titre du système prend sa part de la hauteur disponible.
+		int top = 0;
+		if (!borderless) {
+			SDL_GetWindowBordersSize(window, &top, nullptr, nullptr, nullptr);
+		}
+		w = std::min(w, (int)usable.x);
+		h = std::min(h, std::max((int)usable.y - top, 1));
+	}
+	SDL_SetWindowMinimumSize(window, w, h); // agrandit aussi la fenêtre si elle est plus petite
+}
+
+void DisplayServer::window_set_min_size(int p_width, int p_height) {
+	if (p_width == min_width && p_height == min_height) {
+		return;
+	}
+	min_width = p_width;
+	min_height = p_height;
+	_apply_min_size();
+}
+
+void DisplayServer::window_minimize() {
+	if (window) {
+		SDL_MinimizeWindow(window);
+	}
+}
+
+void DisplayServer::window_set_maximized(bool p_maximized) {
+	if (!window || fullscreen) {
+		return;
+	}
+	if (p_maximized) {
+		SDL_MaximizeWindow(window);
+	} else {
+		SDL_RestoreWindow(window);
+	}
+}
+
+bool DisplayServer::window_is_maximized() const {
+	return window && (SDL_GetWindowFlags(window) & SDL_WINDOW_MAXIMIZED) != 0;
+}
+
+bool DisplayServer::window_is_minimized() const {
+	return window && (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
+}
+
+// ---------------------------------------------------------------------------
+// Barre de titre
+// ---------------------------------------------------------------------------
+static SDL_HitTestResult SDLCALL _sdl_hit_test(SDL_Window *, const SDL_Point *p_point, void *p_data) {
+	return (SDL_HitTestResult)((DisplayServer *)p_data)->window_hit_test(p_point->x, p_point->y, true);
+}
+
+int DisplayServer::window_hit_test(int p_x, int p_y, bool p_click) {
+	if (!window || !borderless || fullscreen) {
+		return SDL_HITTEST_NORMAL;
+	}
+	int w = 0, h = 0;
+	SDL_GetWindowSize(window, &w, &h);
+	// Bords et coins : redimensionnement (sauf fenêtre agrandie, qui occupe tout l'écran).
+	if (resizable && resize_border > 0 && !window_is_maximized()) {
+		const int edge = resize_border, corner = resize_border * 3;
+		const bool left = p_x < edge, right = p_x >= w - edge, top = p_y < edge, bottom = p_y >= h - edge;
+		if (left || right || top || bottom) {
+			const bool near_left = p_x < corner, near_right = p_x >= w - corner;
+			const bool near_top = p_y < corner, near_bottom = p_y >= h - corner;
+			if (near_top && near_left) {
+				return SDL_HITTEST_RESIZE_TOPLEFT;
+			}
+			if (near_top && near_right) {
+				return SDL_HITTEST_RESIZE_TOPRIGHT;
+			}
+			if (near_bottom && near_left) {
+				return SDL_HITTEST_RESIZE_BOTTOMLEFT;
+			}
+			if (near_bottom && near_right) {
+				return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
+			}
+			return top ? SDL_HITTEST_RESIZE_TOP : bottom ? SDL_HITTEST_RESIZE_BOTTOM : left ? SDL_HITTEST_RESIZE_LEFT : SDL_HITTEST_RESIZE_RIGHT;
+		}
+	}
+	for (const WindowRect &area : caption_areas) {
+		if (p_x < area.x || p_y < area.y || p_x >= area.x + area.w || p_y >= area.y + area.h) {
+			continue;
+		}
+#if defined(_WIN32)
+		(void)p_click; // Windows agrandit lui-même la fenêtre au double-clic sur une zone de titre
+#else
+		// Ailleurs, SDL appelle cette fonction à chaque appui : deux appuis rapprochés font
+		// un double-clic.
+		if (!p_click) {
+			return SDL_HITTEST_DRAGGABLE;
+		}
+		const uint32_t now = SDL_GetTicks();
+		if (caption_click_ticks != 0 && now - caption_click_ticks < 400 && std::abs(p_x - caption_click_x) < 6 && std::abs(p_y - caption_click_y) < 6) {
+			caption_click_ticks = 0;
+			maximize_toggle_pending = true;
+			return SDL_HITTEST_NORMAL;
+		}
+		caption_click_ticks = now == 0 ? 1 : now;
+		caption_click_x = p_x;
+		caption_click_y = p_y;
+#endif
+		return SDL_HITTEST_DRAGGABLE;
+	}
+	return SDL_HITTEST_NORMAL;
+}
+
+void DisplayServer::window_set_borderless(bool p_borderless) {
+	if (!window || p_borderless == borderless) {
+		return;
+	}
+	borderless = p_borderless;
+	SDL_SetWindowBordered(window, borderless ? SDL_FALSE : SDL_TRUE);
+	SDL_SetWindowHitTest(window, borderless ? _sdl_hit_test : nullptr, this);
+	_apply_title_bar_theme();
+	_apply_min_size();
+}
+
+void DisplayServer::window_set_caption_areas(const std::vector<WindowRect> &p_areas, int p_resize_border) {
+	caption_areas = p_areas;
+	resize_border = p_resize_border;
+}
+
+void DisplayServer::_apply_title_bar_theme() {
+	if (!window) {
+		return;
+	}
+	const auto to_rgb = [](const Color &p_color) -> uint32_t {
+		const auto channel = [](float p_value) -> uint32_t {
+			return (uint32_t)(std::clamp(p_value, 0.0f, 1.0f) * 255.0f + 0.5f);
+		};
+		return (channel(p_color.r) << 16) | (channel(p_color.g) << 8) | channel(p_color.b);
+	};
+	WindowPlatform::set_title_bar_theme(window, dark_title_bar, title_bar_has_colors, to_rgb(title_bar_background), to_rgb(title_bar_text));
+}
+
+void DisplayServer::window_set_title_bar_theme(bool p_dark, const Color &p_background, const Color &p_text) {
+	dark_title_bar = p_dark;
+	title_bar_has_colors = true;
+	title_bar_background = p_background;
+	title_bar_text = p_text;
+	_apply_title_bar_theme();
+}
+
+void DisplayServer::window_process_requests() {
+	// Double-clic sur la barre intégrée : on attend que le bouton soit relâché. Changer la
+	// taille de la fenêtre sous un bouton encore enfoncé serait pris pour un glisser.
+	if (maximize_toggle_pending && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK) == 0) {
+		maximize_toggle_pending = false;
+		window_set_maximized(!window_is_maximized());
+	}
 }
 
 void DisplayServer::set_icon(const uint8_t *p_rgba, int p_width, int p_height) {
@@ -140,6 +359,9 @@ void DisplayServer::set_icon(const uint8_t *p_rgba, int p_width, int p_height) {
 }
 
 void DisplayServer::destroy() {
+	if (window) {
+		WindowPlatform::uninstall_maximize_fix(window);
+	}
 	if (renderer) {
 		SDL_DestroyRenderer(renderer);
 		renderer = nullptr;

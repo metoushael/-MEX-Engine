@@ -543,13 +543,17 @@ void EditorNode::_draw_project_row(ProjectEntry &p_project, float p_width) {
 	// --- Informations à droite : dernière ouverture et définition ---
 	const String date = _relative_date(p_project.last_opened);
 	const String resolution = p_project.missing ? String() : vformat("%d x %d", p_project.width, p_project.height);
-	const float right_w = std::max(ImGui::CalcTextSize(date.c_str()).x, ImGui::CalcTextSize(resolution.c_str()).x) + ES(18);
+	float right_w = std::max(ImGui::CalcTextSize(date.c_str()).x, ImGui::CalcTextSize(resolution.c_str()).x) + ES(18);
 	const float line = ImGui::GetTextLineHeight();
-	dl->AddText(ImVec2(end.x - right_w, pos.y + height * 0.5f - line - ES(1)), u32(palette.text_dim), date.c_str());
-	dl->AddText(ImVec2(end.x - right_w, pos.y + height * 0.5f + ES(3)), u32(palette.text_dim, 0.8f), resolution.c_str());
+	const float text_x = icon_end.x + ES(14);
+	if (end.x - right_w - ES(12) - text_x < ES(150)) {
+		right_w = ES(6); // liste étroite : le nom et le chemin passent avant la date
+	} else {
+		dl->AddText(ImVec2(end.x - right_w, pos.y + height * 0.5f - line - ES(1)), u32(palette.text_dim), date.c_str());
+		dl->AddText(ImVec2(end.x - right_w, pos.y + height * 0.5f + ES(3)), u32(palette.text_dim, 0.8f), resolution.c_str());
+	}
 
 	// --- Nom et chemin ---
-	const float text_x = icon_end.x + ES(14);
 	const float text_w = end.x - right_w - ES(12) - text_x;
 	const float title_size = style.FontSizeBase * 1.22f;
 	ImGui::PushFont(nullptr, title_size);
@@ -593,16 +597,41 @@ void EditorNode::_draw_project_manager() {
 	ImGui::Begin("###ProjectManager", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToFrontOnFocus);
 	ImGui::PopStyleVar(3);
 
-	_draw_brand_header(ES(48));
-	const float header_button_w = ES(150);
-	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - ES(22) - header_button_w * 2 - style.ItemSpacing.x, (header_h - ImGui::GetFrameHeight()) * 0.5f));
-	if (ImGui::Button(ICON_PALETTE "  Apparence", ImVec2(header_button_w, 0))) {
+	const float window_w = ImGui::GetWindowWidth();
+	const ImVec2 window_pos = ImGui::GetWindowPos();
+	const float brand_end = _draw_brand_header(ES(48)) - window_pos.x;
+	// Boutons de la fenêtre (barre de titre intégrée) : dans l'angle, en haut à droite.
+	const float window_buttons_w = _get_window_buttons_width();
+	const float window_buttons_h = ES(32);
+	// Les boutons du bandeau se placent à gauche de ceux de la fenêtre, et se réduisent à
+	// leur icône quand le bandeau est étroit.
+	const float header_right = window_buttons_w > 0.0f ? window_w - window_buttons_w - ES(14) : window_w - ES(22);
+	const bool header_compact = header_right - ES(150) * 2 - style.ItemSpacing.x < brand_end + ES(20);
+	const float header_button_w = header_compact ? ImGui::GetFrameHeight() + ES(10) : ES(150);
+	const float header_buttons_x = header_right - header_button_w * 2 - style.ItemSpacing.x;
+	const float header_buttons_y = (header_h - ImGui::GetFrameHeight()) * 0.5f;
+	ImGui::SetCursorPos(ImVec2(header_buttons_x, header_buttons_y));
+	if (ImGui::Button(header_compact ? ICON_PALETTE "###appearance" : ICON_PALETTE "  Apparence###appearance", ImVec2(header_button_w, 0))) {
 		prefs_open = true;
 	}
-	ImGui::SetItemTooltip("Thème, échelle de l'interface, taille du texte");
+	ImGui::SetItemTooltip("Apparence : thème, échelle de l'interface, taille du texte, barre de titre");
 	ImGui::SameLine();
-	if (ImGui::Button(ICON_INFO "  À propos", ImVec2(header_button_w, 0))) {
+	if (ImGui::Button(header_compact ? ICON_INFO "###about" : ICON_INFO "  À propos###about", ImVec2(header_button_w, 0))) {
 		about_open = true;
+	}
+	if (header_compact) {
+		ImGui::SetItemTooltip("À propos de MEX");
+	}
+	if (window_buttons_w > 0.0f) {
+		_draw_window_buttons(0.0f, window_buttons_h);
+		// Le bandeau déplace la fenêtre, sauf sur ses boutons.
+		const float x0 = window_pos.x, y0 = window_pos.y;
+		const float buttons_end = header_buttons_x + header_button_w * 2 + style.ItemSpacing.x;
+		_add_caption_area(x0, y0, x0 + header_buttons_x, y0 + header_h);
+		_add_caption_area(x0 + header_buttons_x, y0, x0 + buttons_end, y0 + header_buttons_y);
+		_add_caption_area(x0 + header_buttons_x, y0 + header_buttons_y + ImGui::GetFrameHeight(), x0 + buttons_end, y0 + header_h);
+		_add_caption_area(x0 + buttons_end, y0, x0 + window_w - window_buttons_w, y0 + header_h);
+		_add_caption_area(x0 + window_w - window_buttons_w, y0 + window_buttons_h, x0 + window_w, y0 + header_h);
 	}
 
 	// --- Barre d'outils : actions à gauche, recherche et tri à droite ---
@@ -631,19 +660,36 @@ void EditorNode::_draw_project_manager() {
 	}
 	ImGui::SetItemTooltip("Chercher tous les projets d'un dossier et de ses sous-dossiers");
 
+	// La recherche et le tri s'adaptent à la largeur : le libellé « Trier par » disparaît
+	// d'abord, puis les deux passent sur une seconde ligne.
 	const char *sorts[] = { "Dernière ouverture", "Nom", "Chemin" };
-	const float sort_w = ES(190);
-	const float sort_label_w = ImGui::CalcTextSize("Trier par").x + style.ItemSpacing.x;
-	const float side_w = ES(210);
-	const float search_x = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ES(24);
-	const float sort_x = ImGui::GetWindowWidth() - ES(22) - sort_w;
-	ImGui::SameLine(search_x);
-	ImGui::SetNextItemWidth(std::max(ES(120), sort_x - sort_label_w - ES(16) - search_x));
+	const float sort_w = std::min(ES(190), std::max(window_w - ES(44), ES(60)) * 0.45f);
+	float sort_label_w = ImGui::CalcTextSize("Trier par").x + style.ItemSpacing.x;
+	float search_x = ImGui::GetItemRectMax().x - window_pos.x + ES(24);
+	const float sort_x = window_w - ES(22) - sort_w;
+	bool toolbar_two_rows = false;
+	if (sort_x - sort_label_w - ES(16) - search_x < ES(170)) {
+		sort_label_w = 0.0f;
+	}
+	if (sort_x - sort_label_w - ES(16) - search_x < ES(140)) {
+		toolbar_two_rows = true;
+		search_x = ES(22);
+	}
+	const float toolbar_row_h = ImGui::GetFrameHeight() + ES(8);
+	if (toolbar_two_rows) {
+		ImGui::SetCursorPos(ImVec2(search_x, header_h + ES(18) + toolbar_row_h));
+	} else {
+		ImGui::SameLine(search_x);
+	}
+	const float toolbar_y = ImGui::GetCursorPosY();
+	ImGui::SetNextItemWidth(std::max(ES(60), sort_x - sort_label_w - ES(16) - search_x));
 	ImGui::InputTextWithHint("##filter", ICON_SEARCH "  Filtrer les projets", &pm_filter);
-	ImGui::SameLine(sort_x - sort_label_w);
-	ImGui::AlignTextToFramePadding();
-	ImGui::TextDisabled("Trier par");
-	ImGui::SameLine(sort_x);
+	if (sort_label_w > 0.0f) {
+		ImGui::SetCursorPos(ImVec2(sort_x - sort_label_w, toolbar_y));
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextDisabled("Trier par");
+	}
+	ImGui::SetCursorPos(ImVec2(sort_x, toolbar_y));
 	ImGui::SetNextItemWidth(sort_w);
 	if (ImGui::BeginCombo("##sort", sorts[std::clamp(pm_sort, 0, 2)])) {
 		for (int i = 0; i < 3; i++) {
@@ -653,6 +699,9 @@ void EditorNode::_draw_project_manager() {
 			}
 		}
 		ImGui::EndCombo();
+	}
+	if (sort_label_w <= 0.0f) {
+		ImGui::SetItemTooltip("Trier par");
 	}
 	ImGui::PopStyleVar();
 
@@ -685,9 +734,12 @@ void EditorNode::_draw_project_manager() {
 	}
 
 	const float footer_h = ImGui::GetTextLineHeight() + ES(14);
-	const float top = header_h + ES(18) + ImGui::GetFrameHeight() + ES(6) * 2 + ES(18);
-	const float list_h = ImGui::GetWindowHeight() - top - footer_h - ES(12);
-	const float list_w = ImGui::GetWindowWidth() - ES(22) * 2 - side_w - ES(16);
+	const float top = header_h + ES(18) + ImGui::GetFrameHeight() + ES(6) * 2 + ES(18) + (toolbar_two_rows ? toolbar_row_h : 0.0f);
+	const float list_h = std::max(ImGui::GetWindowHeight() - top - footer_h - ES(12), ES(60));
+	// Colonne d'actions : avec les noms, ou réduite aux icônes quand la liste manquerait de place.
+	const bool side_compact = window_w - ES(22) * 2 - ES(210) - ES(16) < ES(380);
+	const float side_w = side_compact ? ImGui::GetFrameHeight() + ES(22) : ES(210);
+	const float list_w = std::max(window_w - ES(22) * 2 - side_w - ES(16), ES(60));
 	ImGui::SetCursorPos(ImVec2(ES(22), top));
 	ImGui::PushStyleColor(ImGuiCol_ChildBg, col(palette.frame));
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ES(8), ES(8)));
@@ -700,16 +752,19 @@ void EditorNode::_draw_project_manager() {
 		const float avail_w = ImGui::GetContentRegionAvail().x;
 		ImGui::Dummy(ImVec2(0, std::max(ES(20), list_h * 0.28f)));
 		ImGui::PushFont(nullptr, style.FontSizeBase * 1.5f);
-		ImGui::SetCursorPosX((avail_w - ImGui::CalcTextSize(title).x) * 0.5f + ES(8));
+		// Centrés ; dans une liste étroite, les textes reviennent à la ligne au lieu de déborder.
+		ImGui::PushTextWrapPos(ES(8) + avail_w);
+		ImGui::SetCursorPosX(std::max((avail_w - ImGui::CalcTextSize(title).x) * 0.5f, 0.0f) + ES(8));
 		ImGui::TextUnformatted(title);
 		ImGui::PopFont();
-		ImGui::SetCursorPosX((avail_w - ImGui::CalcTextSize(hint).x) * 0.5f + ES(8));
+		ImGui::SetCursorPosX(std::max((avail_w - ImGui::CalcTextSize(hint).x) * 0.5f, 0.0f) + ES(8));
 		ImGui::TextDisabled("%s", hint);
+		ImGui::PopTextWrapPos();
 		if (pm_projects.empty()) {
 			ImGui::Dummy(ImVec2(0, ES(10)));
-			ImGui::SetCursorPosX((avail_w - ES(220)) * 0.5f + ES(8));
+			ImGui::SetCursorPosX(std::max((avail_w - ES(220)) * 0.5f, 0.0f) + ES(8));
 			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ES(14), ES(9)));
-			if (_accent_button(ICON_PLUS "  Créer un projet", ES(220))) {
+			if (_accent_button(ICON_PLUS "  Créer un projet", std::min(ES(220), avail_w))) {
 				pm_dialog = PM_DIALOG_CREATE;
 				pm_dialog_open_request = true;
 				pm_error.clear();
@@ -730,17 +785,17 @@ void EditorNode::_draw_project_manager() {
 	const bool usable = selected && !selected->missing;
 	ImGui::SetCursorPos(ImVec2(ES(22) + list_w + ES(16), top));
 	ImGui::BeginChild("##actions", ImVec2(side_w, list_h));
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ES(14), ES(9)));
-	ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(side_compact ? ES(4) : ES(14), ES(9)));
+	ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(side_compact ? 0.5f : 0.0f, 0.5f));
 	ImGui::BeginDisabled(!usable);
-	if (_accent_button(ICON_EDIT "  Modifier", side_w)) {
+	if (_accent_button(side_compact ? ICON_EDIT "###edit" : ICON_EDIT "  Modifier###edit", side_w)) {
 		const String target = selected->path;
 		_defer([this, target]() { _open_project(target); });
 	}
-	ImGui::SetItemTooltip("Ouvrir le projet dans l'éditeur (double-clic sur la ligne)");
+	ImGui::SetItemTooltip("Modifier : ouvrir le projet dans l'éditeur (double-clic sur la ligne)");
 	ImGui::EndDisabled();
 	ImGui::BeginDisabled(!usable || selected->main_scene.empty());
-	if (ImGui::Button(ICON_PLAY "  Exécuter", ImVec2(side_w, 0))) {
+	if (ImGui::Button(side_compact ? ICON_PLAY "###run" : ICON_PLAY "  Exécuter###run", ImVec2(side_w, 0))) {
 		const String target = selected->path;
 		_defer([this, target]() {
 			pm_play_after_open = true;
@@ -749,24 +804,34 @@ void EditorNode::_draw_project_manager() {
 			}
 		});
 	}
-	ImGui::SetItemTooltip("Ouvrir le projet et lancer sa scène principale");
+	ImGui::SetItemTooltip("Exécuter : ouvrir le projet et lancer sa scène principale");
 	ImGui::EndDisabled();
 	ImGui::BeginDisabled(!usable);
-	if (ImGui::Button(ICON_RENAME "  Renommer", ImVec2(side_w, 0))) {
+	if (ImGui::Button(side_compact ? ICON_RENAME "###rename" : ICON_RENAME "  Renommer###rename", ImVec2(side_w, 0))) {
 		pm_dialog = PM_DIALOG_RENAME;
 		pm_dialog_open_request = true;
 		pm_new_name = selected->name;
 		pm_error.clear();
 	}
-	if (ImGui::Button(ICON_EXTERNAL "  Afficher le dossier", ImVec2(side_w, 0))) {
+	if (side_compact) {
+		ImGui::SetItemTooltip("Renommer le projet");
+	}
+	if (ImGui::Button(side_compact ? ICON_EXTERNAL "###folder" : ICON_EXTERNAL "  Afficher le dossier###folder", ImVec2(side_w, 0))) {
 		const String url = "file://" + String(selected->path[0] == '/' ? "" : "/") + selected->path;
 		if (SDL_OpenURL(url.c_str()) != 0) {
 			pm_error = "Impossible d'ouvrir le dossier : " + selected->path;
 		}
 	}
+	if (side_compact) {
+		ImGui::SetItemTooltip("Afficher le dossier du projet");
+	}
 	ImGui::EndDisabled();
 	ImGui::BeginDisabled(!selected);
-	if (ImGui::Button(ICON_MINUS "  Retirer de la liste", ImVec2(side_w, 0))) {
+	const bool remove_pressed = ImGui::Button(side_compact ? ICON_MINUS "###remove" : ICON_MINUS "  Retirer de la liste###remove", ImVec2(side_w, 0));
+	if (side_compact) {
+		ImGui::SetItemTooltip("Retirer le projet de la liste (ses fichiers sont conservés)");
+	}
+	if (remove_pressed) {
 		const String target = selected->path;
 		_confirm("Retirer le projet de la liste", "« " + selected->name + " » ne sera plus affiché dans la liste.\n\nSes fichiers ne sont pas supprimés :\n" + target, {
 																																								   { "Retirer", [this, target]() {
@@ -782,7 +847,7 @@ void EditorNode::_draw_project_manager() {
 	ImGui::PopStyleVar(2);
 
 	// Fiche du projet sélectionné.
-	if (selected) {
+	if (selected && !side_compact) {
 		ImGui::Dummy(ImVec2(0, ES(10)));
 		ImGui::Separator();
 		ImGui::Dummy(ImVec2(0, ES(6)));

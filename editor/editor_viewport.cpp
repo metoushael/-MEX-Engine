@@ -754,7 +754,7 @@ void EditorNode::_draw_tile_palette(TileMap *p_map) {
 	const Vector2 tile_size = p_map->get_tile_size();
 	if (texture.is_null()) {
 		ImGui::PushTextWrapPos(0.0f);
-		ImGui::TextDisabled("Aucune texture : tuiles de couleur. Assignez une image d'atlas à la propriété « texture ».");
+		EditorUI::hint("Aucune texture : tuiles de couleur. Assignez une image d'atlas à la propriété « texture ».");
 		ImGui::PopTextWrapPos();
 	}
 	ImGui::Separator();

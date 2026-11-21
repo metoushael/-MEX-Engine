@@ -71,9 +71,11 @@ std::vector<String> EditorNode::_get_theme_names() {
 	return names;
 }
 
+// Échelle « Automatique » : celle de l'écran (densité), réduite quand la fenêtre est trop
+// petite pour l'interface à sa taille normale (voir _update_window_fit).
 float EditorNode::_get_auto_ui_scale() const {
 	DisplayServer *display = DisplayServer::get_singleton();
-	return display ? display->get_screen_scale() : 1.0f;
+	return (display ? display->get_screen_scale() : 1.0f) * window_fit;
 }
 
 void EditorNode::_load_prefs() {
@@ -97,6 +99,8 @@ void EditorNode::_load_prefs() {
 			pref_files_grid = config.get_value("fichiers", "grille", Variant(pref_files_grid)).as_bool();
 		}
 	}
+	// Lue par la même fonction qu'avant la création de la fenêtre : les deux restent d'accord.
+	pref_custom_title_bar = read_title_bar_preference();
 	// Variables d'environnement : captures d'écran et tests, sans toucher aux préférences.
 	if (const char *forced = SDL_getenv("MEX_EDITOR_THEME")) {
 		pref_theme = forced;
@@ -125,6 +129,7 @@ void EditorNode::_save_prefs() {
 	config.set_value("fichiers", "miniatures", Variant(pref_thumbnails));
 	config.set_value("fichiers", "taille_des_miniatures", Variant((double)pref_thumbnail_size));
 	config.set_value("fichiers", "grille", Variant(pref_files_grid));
+	config.set_value("fenetre", "barre_de_titre_integree", Variant(pref_custom_title_bar));
 	if (config.save(prefs_path) != OK) {
 		print_warning("Impossible d'enregistrer les préférences de l'éditeur : " + prefs_path);
 	}
@@ -253,6 +258,9 @@ void EditorNode::_apply_style() {
 	style.WindowMenuButtonPosition = ImGuiDir_None;
 	style.WindowTitleAlign = ImVec2(0.0f, 0.5f);
 	style.DisabledAlpha = 0.45f;
+	// Plus petite taille d'un panneau ou d'une fenêtre flottante : on ne peut pas les écraser
+	// jusqu'à les faire disparaître en tirant sur une séparation.
+	style.WindowMinSize = ImVec2(150, 96);
 	style.ScaleAllSizes(ui_scale);
 	style.FontSizeBase = pref_font_size;
 	style.FontScaleDpi = ui_scale;
@@ -318,6 +326,7 @@ void EditorNode::_apply_style() {
 	c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, p.dark ? 0.55f : 0.35f);
 
 	ImGui::GetStyle() = style;
+	_apply_window_settings();
 }
 
 bool EditorNode::_toggle_button(const char *p_label, bool p_active, const char *p_tip) {
@@ -617,7 +626,19 @@ void EditorNode::_draw_preferences() {
 	ImGui::SliderFloat("##font", &pref_font_size, 12.0f, 24.0f, "%.0f px");
 	// Appliquée au relâchement : le curseur ne bouge pas sous la souris pendant le réglage.
 	changed |= ImGui::IsItemDeactivatedAfterEdit();
-	ImGui::TextDisabled("Le texte et les icônes sont vectoriels : ils restent nets à toutes les échelles.");
+	ImGui::PushTextWrapPos(0.0f);
+	ImGui::TextDisabled("« Automatique » suit la densité de l'écran et réduit l'interface (jusqu'à 75 %%) quand la fenêtre ou l'écran sont petits. Le texte et les icônes sont vectoriels : ils restent nets à toutes les échelles.");
+	ImGui::PopTextWrapPos();
+
+	// --- Fenêtre ---
+	ImGui::SeparatorText(ICON_MAXIMIZE "  Fenêtre");
+	row("Barre de titre intégrée");
+	if (ImGui::Checkbox("##title_bar", &pref_custom_title_bar)) {
+		changed = true;
+		const bool custom = pref_custom_title_bar;
+		_defer([custom]() { DisplayServer::get_singleton()->window_set_borderless(custom); });
+	}
+	ImGui::SetItemTooltip("Cochée : les boutons Réduire, Agrandir et Fermer sont dans la barre du haut de l'éditeur.\nDécochée : barre de titre du système, sombre avec un thème sombre.");
 
 	// --- Fichiers ---
 	ImGui::SeparatorText(ICON_DOCK_FILES "  Fichiers");
@@ -642,9 +663,21 @@ void EditorNode::_draw_preferences() {
 		pref_rounding = 5.0f;
 		pref_thumbnails = true;
 		pref_thumbnail_size = 72.0f;
+		{
+			// Barre de titre : réglage d'origine du système (intégrée sous Windows et Linux).
+			const bool custom = get_default_title_bar_preference();
+			if (custom != pref_custom_title_bar) {
+				pref_custom_title_bar = custom;
+				_defer([custom]() { DisplayServer::get_singleton()->window_set_borderless(custom); });
+			}
+		}
 		changed = true;
 	}
-	ImGui::SameLine(ImGui::GetWindowWidth() - ES(130) - ImGui::GetStyle().WindowPadding.x);
+	// Fenêtre étroite : « Fermer » passe sous le premier bouton au lieu de le recouvrir.
+	const float close_x = ImGui::GetWindowWidth() - ES(130) - ImGui::GetStyle().WindowPadding.x;
+	if (close_x > ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetStyle().ItemSpacing.x) {
+		ImGui::SameLine(close_x);
+	}
 	if (_accent_button("Fermer", ES(130)) || !open) {
 		ImGui::CloseCurrentPopup();
 	}

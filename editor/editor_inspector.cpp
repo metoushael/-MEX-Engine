@@ -63,7 +63,7 @@ void EditorNode::_draw_inspector_dock() {
 	}
 	Node *node = _get_selected();
 	if (!node) {
-		ImGui::TextDisabled("Sélectionnez un nœud pour modifier ses propriétés.");
+		EditorUI::hint("Sélectionnez un nœud pour modifier ses propriétés.");
 		ImGui::End();
 		return;
 	}
@@ -149,7 +149,17 @@ void EditorNode::_draw_object_properties(Object *p_object, bool p_is_node) {
 				continue;
 			}
 		}
-		const float label_width = std::max(110.0f, ImGui::GetContentRegionAvail().x * 0.40f);
+		// La colonne des libellés prend la largeur du plus long, dans la limite de la moitié
+		// du panneau. Panneau étroit : chaque libellé passe au-dessus de son champ.
+		const float section_w = ImGui::GetContentRegionAvail().x;
+		const bool stacked = section_w < ES(230);
+		float longest_label = 0.0f;
+		for (const PropertyInfo &pi : section.properties) {
+			if ((pi.usage & PROPERTY_USAGE_EDITOR) && !(pi.usage & PROPERTY_USAGE_GROUP)) {
+				longest_label = std::max(longest_label, ImGui::CalcTextSize(str_capitalize(pi.name).c_str()).x);
+			}
+		}
+		const float label_width = stacked ? section_w + ImGui::GetCursorPosX() : ImGui::GetCursorPosX() + std::clamp(longest_label + ES(14), std::min(ES(96), section_w * 0.5f), section_w * 0.5f);
 		for (const PropertyInfo &pi : section.properties) {
 			if (pi.usage & PROPERTY_USAGE_GROUP) {
 				ImGui::SeparatorText(pi.name.c_str());
@@ -200,7 +210,9 @@ void EditorNode::_draw_object_properties(Object *p_object, bool p_is_node) {
 				}
 				ImGui::EndPopup();
 			}
-			ImGui::SameLine(label_width);
+			if (!stacked) {
+				ImGui::SameLine(label_width);
+			}
 			ImGui::SetNextItemWidth(-FLT_MIN);
 			if (_edit_property(p_object, pi, value)) {
 				if (ObjectDB::get_instance(object_id) == p_object) {
@@ -578,7 +590,7 @@ void EditorNode::_draw_node_signals(Node *p_node) {
 	}
 	ClassDB::get_signal_list(p_node->get_class(), &signals);
 	if (signals.empty()) {
-		ImGui::TextDisabled("Ce nœud n'a aucun signal.");
+		EditorUI::hint("Ce nœud n'a aucun signal.");
 		return;
 	}
 	const ObjectID id = p_node->get_instance_id();
@@ -693,7 +705,7 @@ void EditorNode::_draw_connect_dialog() {
 		ImGui::TextWrapped("Le nœud cible n'a pas de script : attachez-en un contenant cette méthode.");
 		ImGui::PopStyleColor();
 	} else if (needs_stub) {
-		ImGui::TextDisabled("La fonction sera ajoutée à la fin du script cible.");
+		EditorUI::hint("La fonction sera ajoutée à la fin du script cible.");
 	}
 	ImGui::Spacing();
 
@@ -749,7 +761,7 @@ void EditorNode::_draw_connect_dialog() {
 // ---------------------------------------------------------------------------
 void EditorNode::_draw_node_groups(Node *p_node) {
 	const ObjectID id = p_node->get_instance_id();
-	ImGui::TextDisabled("Les groupes servent à retrouver des nœuds :\nget_tree().get_nodes_in_group(\"ennemis\")");
+	EditorUI::hint("Les groupes servent à retrouver des nœuds :\nget_tree().get_nodes_in_group(\"ennemis\")");
 	ImGui::Spacing();
 	ImGui::SetNextItemWidth(ES(-90));
 	const bool entered = ImGui::InputTextWithHint("##group", "Nom du groupe", &group_buffer, ImGuiInputTextFlags_EnterReturnsTrue);
@@ -765,7 +777,7 @@ void EditorNode::_draw_node_groups(Node *p_node) {
 	ImGui::Separator();
 	const std::set<String> groups = p_node->get_groups_set();
 	if (groups.empty()) {
-		ImGui::TextDisabled("Ce nœud n'appartient à aucun groupe.");
+		EditorUI::hint("Ce nœud n'appartient à aucun groupe.");
 	}
 	for (const String &group : groups) {
 		ImGui::PushID(group.c_str());

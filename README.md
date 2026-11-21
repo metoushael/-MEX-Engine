@@ -96,7 +96,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.3.0). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.4.0). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -204,6 +204,55 @@ ouverte, pause, arrêt).
 Ctrl+S enregistre, Ctrl+Z annule, Ctrl+Y rétablit. Les touches des actions se règlent dans
 *Projet > Paramètres du projet > Contrôles*. *Projet > Exporter le jeu...* produit un jeu autonome.
 
+### Barre de titre et taille de la fenêtre
+
+La fenêtre de l'éditeur n'a pas de barre de titre séparée : les boutons **Réduire**,
+**Agrandir / Restaurer** et **Fermer** sont dans la barre du haut, à droite, aux couleurs
+du thème.
+
+| Geste | Effet |
+| --- | --- |
+| Glisser une zone vide de la barre du haut | Déplace la fenêtre |
+| Double-clic sur une zone vide de la barre | Agrandit ou restaure |
+| Glisser un bord ou un coin | Redimensionne |
+
+*Éditeur > Préférences... > Fenêtre > Barre de titre intégrée*, décochée, rend la barre de
+titre du système ; le changement est immédiat. Cette barre est alors demandée sombre quand
+le thème est sombre : Windows 10 (version 2004) et 11 l'affichent sombre, Windows 11 lui
+donne en plus la couleur du thème ; sous Linux, l'indication `_GTK_THEME_VARIANT` est
+suivie par GNOME et les gestionnaires de fenêtres qui la lisent, pas par tous. Sous macOS,
+la barre du système est le réglage d'origine : elle suit déjà l'apparence du système.
+
+L'interface s'adapte à la taille de la fenêtre et de l'écran :
+
+- la fenêtre s'ouvre agrandie, sans recouvrir la barre des tâches ;
+- avec l'échelle *Automatique*, l'interface rétrécit par pas de 5 %, jusqu'à 75 %, quand la
+  fenêtre passe sous 1280 x 680 points ;
+- la barre du haut se resserre : les espaces de travail ne gardent que leur icône, puis les
+  menus se regroupent derrière un seul bouton ;
+- les docks gardent leurs proportions quand la fenêtre change de taille ; dans un
+  inspecteur étroit, les libellés passent au-dessus des champs ; les textes d'aide
+  reviennent à la ligne ;
+- les boîtes de dialogue et les fenêtres flottantes ne dépassent jamais de la fenêtre
+  principale.
+
+La fenêtre a une **taille minimale**, en dessous de laquelle elle ne peut pas être réduite :
+960 x 600 points multipliés par l'échelle de l'interface, soit 720 x 450 avec l'échelle
+automatique sur un écran ordinaire. Les docks et les fenêtres flottantes ont eux aussi une
+taille minimale.
+
+Pour un jeu, la taille minimale et la barre de titre se règlent dans
+*Projet > Paramètres du projet > Affichage* :
+
+| Paramètre | Valeur d'origine | Rôle |
+| --- | --- | --- |
+| `display/min_width` | 320 | Largeur minimale de la fenêtre du jeu |
+| `display/min_height` | 180 | Hauteur minimale de la fenêtre du jeu |
+| `display/dark_title_bar` | `true` | Demande une barre de titre sombre au système |
+
+La variable d'environnement `MEX_EDITOR_TITLE_BAR=systeme` force la barre du système sans
+toucher aux préférences.
+
 ### Aperçus et moniteur
 
 ![Jeu en cours et moniteur](docs/moniteur.png)
@@ -232,6 +281,7 @@ préférences ; le bouton *Actualiser* les recalcule.
   élevé, ou Personnalisé (couleur de fond et couleur d'accent au choix) ;
 - l'**échelle de l'interface** (automatique d'après l'écran, ou de 75 % à 300 %), la taille
   du texte et l'arrondi des angles ;
+- la **barre de titre** : intégrée à l'éditeur ou celle du système ;
 - les aperçus de fichiers et la taille des miniatures.
 
 Les réglages sont enregistrés dans `editor_settings.cfg`, dans le dossier de données de
@@ -474,7 +524,7 @@ ressources `.res`, scripts `.mx`, archives de jeu `.pck`.
 | Dossier | Contenu |
 | --- | --- |
 | `core/` | `Variant`, `Object`, `ClassDB`, chaînes, mathématiques, entrées, fichiers, archives `.pck`, paramètres du projet |
-| `servers/` | Fenêtre (SDL2), rendu 2D, rendu 3D (OpenGL 2.1), physique 2D et 3D, audio |
+| `servers/` | Fenêtre (SDL2 ; `window_platform.cpp` : barre de titre sombre et agrandissement sous Windows et X11), rendu 2D, rendu 3D (OpenGL 2.1), physique 2D et 3D, audio |
 | `scene/` | Nœuds 2D (`2d/`) et 3D (`3d/`), `SceneTree`, interface (`gui/`), animation, ressources, scènes empaquetées |
 | `modules/mexscript/` | Analyseur et interpréteur du langage de script |
 | `editor/` | Éditeur (Dear ImGui) : gestionnaire de projets, docks, thèmes, aperçus, moniteur ; `editor/icons/` génère la police d'icônes |
@@ -516,6 +566,10 @@ français.
 - Gestionnaire de projets : pas de duplication ni de suppression de projets sur le disque ;
   il n'y a pas de bibliothèque de modèles en ligne.
 - Le moniteur mesure l'éditeur et le jeu lancé dans l'onglet *Jeu*, pas un jeu exporté.
+- Fenêtre : avec la barre de titre intégrée, Windows 11 ne propose pas ses dispositions
+  d'ancrage au survol du bouton Agrandir (l'ancrage par glisser vers un bord et par
+  Windows + flèches reste celui du système) ; sous Wayland, SDL2 passe par XWayland. La
+  barre du système n'est sombre que si le système ou le gestionnaire de fenêtres le permet.
 
 ## Publier une version avec GitHub
 
@@ -529,7 +583,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.3.0"
+git commit -m "MEX 0.4.0"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -539,7 +593,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Archives `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.3.0**. Archives `mex-v0.3.0-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.4.0**. Archives `mex-v0.4.0-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -549,22 +603,22 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.3.0
-  git push origin v0.3.0
+  git tag v0.4.0
+  git push origin v0.4.0
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.3.0` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.4.0` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.3.0-windows-x86_64.zip`
-- `mex-v0.3.0-linux-x86_64.tar.gz`
-- `mex-v0.3.0-macos-universal.tar.gz`
+- `mex-v0.4.0-windows-x86_64.zip`
+- `mex-v0.4.0-linux-x86_64.tar.gz`
+- `mex-v0.4.0-macos-universal.tar.gz`
 - `SHA256SUMS.txt`, les empreintes des archives.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.3.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.4.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 archives sont tout de même publiées et la note de version le signale.
 
 **Si rien n'apparaît dans Releases :**
@@ -606,7 +660,8 @@ une commande par ligne sous la forme `<image> <commande> [arguments]` :
 ```
 
 Commandes : `move x y`, `down`, `up`, `click [bouton]`, `wheel dy`, `key <touche> [ctrl] [shift]`,
-`keydown`, `keyup`, `text <chaîne>` (31 octets au plus par commande), `shot <fichier.bmp>`.
+`keydown`, `keyup`, `text <chaîne>` (31 octets au plus par commande), `shot <fichier.bmp>`,
+`resize <largeur> <hauteur>` (demande une taille de fenêtre ; la taille minimale s'applique).
 Avec `SDL_VIDEODRIVER=dummy`, l'éditeur tourne sans écran (et donc sans rendu 3D ; pour
 la 3D, utilisez un écran virtuel : `xvfb-run -a mex ...`).
 

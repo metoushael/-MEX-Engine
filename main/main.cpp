@@ -452,6 +452,13 @@ int Main::run(int p_argc, char **p_argv) {
 		options.maximized = !cmd.hidden;
 		options.vsync = true;
 		options.scale_with_screen = true;
+		// Taille minimale provisoire : l'éditeur la recalcule selon l'échelle de son interface.
+		options.min_width = 720;
+		options.min_height = 450;
+#ifdef TOOLS_ENABLED
+		// Barre de titre intégrée à l'éditeur (préférence), sinon barre sombre du système.
+		options.borderless = EditorNode::read_title_bar_preference();
+#endif
 	} else {
 		options.title = GLOBAL_GET("application/name").as_string();
 		options.width = (int)GLOBAL_GET("display/width").as_int();
@@ -460,6 +467,11 @@ int Main::run(int p_argc, char **p_argv) {
 		options.fullscreen = GLOBAL_GET("display/fullscreen").as_bool();
 		options.vsync = GLOBAL_GET("display/vsync").as_bool();
 		options.scale_with_screen = true; // la fenêtre garde la même taille apparente sur un écran dense
+		// Limite en dessous de laquelle le joueur ne peut pas réduire la fenêtre (jamais plus
+		// que la taille de départ), et barre de titre sombre.
+		options.min_width = std::min((int)GLOBAL_GET("display/min_width").as_int(), options.width);
+		options.min_height = std::min((int)GLOBAL_GET("display/min_height").as_int(), options.height);
+		options.dark_title_bar = GLOBAL_GET("display/dark_title_bar").as_bool();
 	}
 
 	int exit_code = 0;

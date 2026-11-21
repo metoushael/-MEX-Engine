@@ -6,11 +6,11 @@
 #   toujours le dernier envoi.
 # - Étiquette « v... » : une version numérotée est publiée.
 #
-#       git tag v0.3.0
-#       git push origin v0.3.0
+#       git tag v0.4.0
+#       git push origin v0.4.0
 #
 # - Sans ligne de commande : onglet « Actions », « Compilation et publication »,
-#   bouton « Run workflow », champ « Version à publier » (par exemple v0.3.0).
+#   bouton « Run workflow », champ « Version à publier » (par exemple v0.4.0).
 #   L'étiquette est créée par le flux de travail. Champ vide : « Dernière compilation ».
 # - Demande de fusion : compilation et essais seulement, rien n'est publié. Les archives
 #   restent quand même téléchargeables depuis la page de l'exécution (Artifacts).
@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version à publier (ex. v0.3.0). Vide : « Dernière compilation »."
+        description: "Version à publier (ex. v0.4.0). Vide : « Dernière compilation »."
         required: false
         default: ""
         type: string
@@ -61,10 +61,10 @@ jobs:
         run: |
           short=${GITHUB_SHA::7}
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$REQUESTED" ]; then
-            # Version demandée à la main : « 0.3.0 » est accepté pour « v0.3.0 ».
+            # Version demandée à la main : « 0.4.0 » est accepté pour « v0.4.0 ».
             tag="v${REQUESTED#v}"
             if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+(\.[0-9]+){1,2}(-[0-9A-Za-z.]+)?$'; then
-              echo "::error::Version invalide : « $REQUESTED ». Exemples : v0.3.0, v1.0.0-beta1."
+              echo "::error::Version invalide : « $REQUESTED ». Exemples : v0.4.0, v1.0.0-beta1."
               exit 1
             fi
             kind=version; label="$tag"; version="${tag#v}"
@@ -108,7 +108,7 @@ jobs:
       run:
         shell: ${{ matrix.shell }}
     env:
-      # Version affichée par le moteur (« 0.3.0 », ou « dev-1a2b3c4 » hors version numérotée).
+      # Version affichée par le moteur (« 0.4.0 », ou « dev-1a2b3c4 » hors version numérotée).
       VERSION: ${{ needs.prepare.outputs.version }}
       PACKAGE: mex-${{ needs.prepare.outputs.label }}-${{ matrix.platform }}
 
@@ -340,7 +340,7 @@ jobs:
             # La version existe déjà (nouvelle exécution) : ses fichiers sont remplacés.
             gh release upload "$TAG" mex-* SHA256SUMS.txt --clobber
           else
-            # Une étiquette comme v0.3.0-beta1 donne une préversion.
+            # Une étiquette comme v0.4.0-beta1 donne une préversion.
             options=()
             case "$TAG" in *-*) options+=(--prerelease) ;; esac
             # --target : crée l'étiquette si elle n'existe pas encore (publication lancée à

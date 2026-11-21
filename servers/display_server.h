@@ -2,6 +2,9 @@
 #pragma once
 
 #include "core/input/input_event.h"
+#include "core/math/color.h"
+
+#include <vector>
 
 struct SDL_Window;
 struct SDL_Renderer;
@@ -13,7 +16,33 @@ class DisplayServer {
 	SDL_Window *window = nullptr;
 	SDL_Renderer *renderer = nullptr;
 	bool fullscreen = false;
+	bool borderless = false;
+	bool resizable = true;
+	bool dark_title_bar = true;
 	float screen_scale = 1.0f;
+	int min_width = 0, min_height = 0;
+
+public:
+	// Rectangle en unités de fenêtre (celles des événements de souris).
+	struct WindowRect {
+		int x = 0, y = 0, w = 0, h = 0;
+	};
+
+private:
+	// Barre de titre intégrée : zones par lesquelles on déplace la fenêtre, épaisseur des
+	// bords par lesquels on la redimensionne.
+	std::vector<WindowRect> caption_areas;
+	int resize_border = 0;
+	uint32_t caption_click_ticks = 0;
+	int caption_click_x = 0, caption_click_y = 0;
+	bool maximize_toggle_pending = false;
+
+	bool title_bar_has_colors = false;
+	Color title_bar_background;
+	Color title_bar_text;
+
+	void _apply_min_size();
+	void _apply_title_bar_theme();
 
 public:
 	struct WindowOptions {
@@ -27,6 +56,15 @@ public:
 		bool hidden = false;
 		// Agrandit la fenêtre selon l'échelle d'affichage du système (écrans à haute densité).
 		bool scale_with_screen = false;
+		// Sans barre de titre du système : l'application dessine la sienne, avec ses boutons
+		// Réduire, Agrandir et Fermer (voir window_set_caption_areas).
+		bool borderless = false;
+		// Barre de titre du système en version sombre, là où le système le permet.
+		bool dark_title_bar = true;
+		// Plus petite taille que l'utilisateur peut donner à la fenêtre (0 = pas de limite).
+		// Suit scale_with_screen, et ne dépasse jamais la place disponible à l'écran.
+		int min_width = 0;
+		int min_height = 0;
 	};
 
 	static DisplayServer *get_singleton() { return singleton; }
@@ -47,6 +85,35 @@ public:
 	void window_set_title(const String &p_title);
 	void window_set_fullscreen(bool p_fullscreen);
 	bool window_is_fullscreen() const { return fullscreen; }
+
+	// --- Taille et état de la fenêtre ---
+	Size2 window_get_logical_size() const; // en unités de fenêtre (points)
+	// Place disponible sur l'écran qui porte la fenêtre, hors barre des tâches, en unités de fenêtre.
+	Size2 screen_get_usable_size() const;
+	// Taille minimale, en unités de fenêtre ; ramenée à la place disponible à l'écran.
+	void window_set_min_size(int p_width, int p_height);
+	Size2 window_get_min_size() const { return Size2((real_t)min_width, (real_t)min_height); }
+	void window_minimize();
+	void window_set_maximized(bool p_maximized);
+	bool window_is_maximized() const;
+	bool window_is_minimized() const;
+
+	// --- Barre de titre ---
+	// Barre intégrée (fenêtre sans décoration du système) ou barre du système.
+	void window_set_borderless(bool p_borderless);
+	bool window_is_borderless() const { return borderless; }
+	// Zones de la barre intégrée qui déplacent la fenêtre (double-clic : agrandir ou restaurer)
+	// et épaisseur des bords qui la redimensionnent. À redonner quand l'interface change.
+	void window_set_caption_areas(const std::vector<WindowRect> &p_areas, int p_resize_border);
+	int window_get_resize_border() const { return resize_border; }
+	// Barre du système : sombre ou claire ; couleurs exactes là où le système les accepte
+	// (Windows 11). Sans effet sur une barre intégrée.
+	void window_set_title_bar_theme(bool p_dark, const Color &p_background, const Color &p_text);
+	// À appeler une fois par image : applique les demandes venues de la barre intégrée.
+	void window_process_requests();
+	// Rôle de ce point de la fenêtre (valeur de SDL_HitTestResult) : normal, déplacement,
+	// redimensionnement. p_click : appui réel signalé par SDL (repère les doubles-clics).
+	int window_hit_test(int p_x, int p_y, bool p_click = false);
 	// Résolution logique : le jeu est mis à l'échelle (bandes noires si besoin).
 	void set_logical_size(int p_width, int p_height);
 	void present();

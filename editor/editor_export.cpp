@@ -144,7 +144,8 @@ void EditorNode::_draw_export_dialog() {
 	}
 	const ImGuiViewport *viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSizeConstraints(ImVec2(ES(640), 0), ImVec2(ES(640), FLT_MAX));
+	const float export_w = std::min(ES(640), viewport->WorkSize.x - ES(40));
+	ImGui::SetNextWindowSizeConstraints(ImVec2(export_w, 0), ImVec2(export_w, FLT_MAX));
 	if (ImGui::Begin("Exporter le jeu###Export", &export_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::TextWrapped("Crée un dossier contenant l'exécutable du jeu et une archive « .pck » avec tous les fichiers du projet. Ce dossier peut être copié ou compressé tel quel pour distribuer le jeu.");
 		ImGui::Spacing();

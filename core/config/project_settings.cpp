@@ -16,6 +16,9 @@ void ProjectSettings::_register_defaults() {
 	defaults["display/width"] = Variant(1152);
 	defaults["display/height"] = Variant(648);
 	defaults["display/resizable"] = Variant(true);
+	defaults["display/min_width"] = Variant(320);
+	defaults["display/min_height"] = Variant(180);
+	defaults["display/dark_title_bar"] = Variant(true);
 	defaults["display/fullscreen"] = Variant(false);
 	defaults["display/vsync"] = Variant(true);
 	defaults["physics/gravity"] = Variant(980.0); // 2D, en pixels/s²

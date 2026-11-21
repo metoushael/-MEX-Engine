@@ -6,6 +6,7 @@
 #include "core/object/object.h"
 #include "main/game_runner.h"
 #include "scene/resources/texture.h"
+#include "servers/display_server.h"
 #include "servers/rendering_server.h"
 #include "servers/rendering_server_3d.h"
 
@@ -27,6 +28,12 @@ public:
 
 	EditorNode();
 	~EditorNode();
+
+	// Préférence « barre de titre intégrée », lue avant la création de la fenêtre (qui naît
+	// ainsi directement avec ou sans la barre du système).
+	static bool read_title_bar_preference();
+	// Réglage d'origine : barre intégrée sous Windows et Linux, barre du système sous macOS.
+	static bool get_default_title_bar_preference();
 
 private:
 	// --- Général -------------------------------------------------------------
@@ -66,11 +73,41 @@ private:
 	bool pref_thumbnails = true;
 	float pref_thumbnail_size = 72.0f;
 	bool pref_files_grid = false;
+	// Barre de titre intégrée à l'éditeur (boutons Réduire, Agrandir, Fermer dans la barre du
+	// haut) ; sinon, barre de titre du système, en version sombre si le thème est sombre.
+	bool pref_custom_title_bar = true;
 	bool prefs_open = false;
 	bool style_dirty = false; // le style est réappliqué au début de l'image suivante
 	String prefs_path; // editor_settings.cfg
 	String prefs_dir; // dossier de préférences de l'utilisateur
 	float _get_auto_ui_scale() const;
+
+	// --- Fenêtre : barre de titre intégrée, adaptation à la taille (editor_window.cpp) ---
+	// Plus petite taille utile de l'interface, en unités à 100 % : en dessous, les barres
+	// ne tiennent plus. La taille minimale de la fenêtre en découle.
+	static constexpr float MIN_LAYOUT_WIDTH = 960.0f;
+	static constexpr float MIN_LAYOUT_HEIGHT = 600.0f;
+	// Taille en dessous de laquelle l'échelle automatique réduit l'interface.
+	static constexpr float COMFORT_LAYOUT_WIDTH = 1280.0f;
+	static constexpr float COMFORT_LAYOUT_HEIGHT = 680.0f;
+	static constexpr float MIN_WINDOW_FIT = 0.75f;
+	float window_fit = 1.0f; // réduction de l'échelle automatique dans une petite fenêtre (0,75 à 1)
+	struct CaptionArea {
+		float x0, y0, x1, y1;
+	};
+	std::vector<CaptionArea> caption_areas; // zones de la barre du haut qui déplacent la fenêtre
+	float last_viewport_w = 0.0f, last_viewport_h = 0.0f;
+	bool _has_custom_title_bar() const;
+	// Trois boutons de fenêtre, collés au bord droit ; renvoie la largeur occupée (0 si la
+	// barre du système est utilisée). p_top et p_height : dans la fenêtre ImGui courante.
+	float _draw_window_buttons(float p_top, float p_height);
+	float _get_window_buttons_width() const;
+	void _add_caption_area(float p_x0, float p_y0, float p_x1, float p_y1);
+	void _update_window_fit(); // début d'image : échelle automatique selon la taille de la fenêtre
+	void _update_window_chrome(); // fin d'image : zones de déplacement, bords, curseurs
+	void _fit_floating_windows(); // les fenêtres flottantes restent dans la fenêtre principale
+	void _rescale_dock_layout(unsigned int p_dockspace_id); // les panneaux suivent la taille de la fenêtre
+	void _apply_window_settings(); // taille minimale et couleurs de la barre du système
 	void _load_prefs();
 	void _save_prefs();
 	void _draw_preferences();
@@ -87,7 +124,9 @@ private:
 	void _process_event(const SDL_Event &p_event);
 	void _draw_ui();
 	void _draw_main_menu();
-	void _draw_toolbar();
+	void _draw_menus();
+	void _draw_toolbar(float p_logo_end);
+	float _get_play_buttons_width(float p_button_h) const;
 	// Espaces de travail : les grands onglets du centre, choisis dans la barre du haut.
 	enum {
 		WORKSPACE_2D,
@@ -238,7 +277,7 @@ private:
 	} create_dialog;
 	bool about_open = false;
 	Ref<Texture2D> logo; // icône de MEX (fenêtre « À propos », gestionnaire de projets)
-	void _draw_brand_header(float p_logo_size);
+	float _draw_brand_header(float p_logo_size); // renvoie le bord droit du bloc, en coordonnées d'écran
 	bool settings_open = false;
 
 	void _open_file_dialog(const String &p_title, const std::vector<String> &p_extensions, bool p_save, std::function<void(const String &)> p_callback, const String &p_default = "");

@@ -146,6 +146,10 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 			_apply_style(); // entre deux images : jamais pendant le parcours de l'interface
 		}
 		pixel_ratio = display->get_pixel_ratio();
+		_update_window_fit();
+		if (style_dirty) {
+			_apply_style();
+		}
 		_run_test_commands(frame_count, false);
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
@@ -169,6 +173,8 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 		ImGui::NewFrame();
 
 		_draw_ui();
+		_fit_floating_windows();
+		_update_window_chrome();
 		_commit_undo_if_idle();
 
 		// --- Simulation du jeu en cours ---
@@ -287,6 +293,7 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 // Chaque ligne : <image> <commande> [arguments]
 //   move x y | down [bouton] | up [bouton] | click [bouton] | wheel dy
 //   key <touche SDL> [ctrl] [shift] | text <chaîne> | shot <fichier.bmp>
+//   resize <largeur> <hauteur> (taille de la fenêtre ; la taille minimale s'applique)
 // ---------------------------------------------------------------------------
 void EditorNode::_load_test_script() {
 	const char *path = SDL_getenv("MEX_EDITOR_TEST_SCRIPT");
@@ -340,6 +347,10 @@ void EditorNode::_run_test_commands(int p_frame, bool p_after_render) {
 			continue;
 		}
 		if (p_after_render) {
+			continue;
+		}
+		if (command.name == "resize" && args.size() >= 2) {
+			SDL_SetWindowSize(DisplayServer::get_singleton()->get_window(), atoi(args[0].c_str()), atoi(args[1].c_str()));
 			continue;
 		}
 		auto push_button = [&](bool p_down, int p_button) {
@@ -525,7 +536,7 @@ void EditorNode::_update_window_title() {
 // Interface
 // ---------------------------------------------------------------------------
 // En-tête de marque : icône, mot « MEX » (le X en Orange MEX), nom complet et version.
-void EditorNode::_draw_brand_header(float p_logo_size) {
+float EditorNode::_draw_brand_header(float p_logo_size) {
 	const ImVec2 start = ImGui::GetCursorScreenPos();
 	float text_x = start.x;
 	if (logo.is_valid()) {
@@ -547,8 +558,10 @@ void EditorNode::_draw_brand_header(float p_logo_size) {
 	ImGui::TextDisabled("Metoushela Engine X  ·  version %s", MEX_VERSION);
 	ImGui::PopStyleVar();
 	ImGui::EndGroup();
+	const float right = ImGui::GetItemRectMax().x;
 	ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + p_logo_size));
 	ImGui::Dummy(ImVec2(0, 4));
+	return right;
 }
 
 void EditorNode::_draw_ui() {
@@ -568,6 +581,7 @@ void EditorNode::_draw_ui() {
 			_build_default_layout(dock_id);
 		}
 	}
+	_rescale_dock_layout(dock_id);
 	ImGui::DockSpaceOverViewport(dock_id, ImGui::GetMainViewport());
 
 	if (fs_dirty) {
@@ -658,22 +672,51 @@ void EditorNode::_switch_workspace(int p_workspace) {
 
 void EditorNode::_draw_main_menu() {
 	// Barre plus haute que les menus d'ImGui par défaut : elle porte aussi le choix de
-	// l'espace de travail et les commandes de lecture.
-	const float padding_x = ImGui::GetStyle().FramePadding.x;
+	// l'espace de travail, les commandes de lecture et, quand la barre de titre est intégrée,
+	// les boutons de la fenêtre.
+	const ImGuiStyle &style = ImGui::GetStyle();
+	const float padding_x = style.FramePadding.x;
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding_x, ES(10)));
 	if (!ImGui::BeginMainMenuBar()) {
 		ImGui::PopStyleVar();
 		return;
 	}
+	const float bar_h = ImGui::GetWindowHeight();
+	const float bar_w = ImGui::GetWindowWidth();
+	float logo_end = ES(10);
 	if (logo.is_valid()) {
-		const float bar_h = ImGui::GetWindowHeight();
 		const float size = bar_h - ES(12);
 		const ImVec2 origin = ImGui::GetWindowPos();
 		const ImVec2 pos(origin.x + ES(10), origin.y + (bar_h - size) * 0.5f);
 		ImTextureID id = (ImTextureID)(intptr_t)RenderingServer::get_singleton()->texture_get_native(logo->get_rid());
 		ImGui::GetWindowDrawList()->AddImage(id, pos, ImVec2(pos.x + size, pos.y + size));
-		ImGui::SetCursorPosX(ES(10) + size + ES(8));
+		logo_end = ES(10) + size + ES(8);
+		ImGui::SetCursorPosX(logo_end);
 	}
+
+	// Barre trop étroite pour tout montrer : les menus se regroupent sous un seul bouton. La
+	// place nécessaire au reste est comptée dans sa forme la plus compacte (voir _draw_toolbar).
+	float menus_w = 0.0f;
+	for (const char *name : { "Fichier", "Édition", "Projet", "Affichage", "Éditeur", "Aide" }) {
+		menus_w += ImGui::CalcTextSize(name).x + style.ItemSpacing.x * 2.0f;
+	}
+	const float button_h = bar_h - ES(10);
+	const float compact_toolbar_w = ES(16) + (button_h + ES(8)) * WORKSPACE_COUNT + ES(2) * (WORKSPACE_COUNT - 1) + ES(8) + _get_play_buttons_width(button_h) + ES(8) + _get_window_buttons_width();
+	const bool grouped = logo_end + menus_w + compact_toolbar_w > bar_w;
+	if (!grouped) {
+		_draw_menus();
+	} else if (ImGui::BeginMenu(ICON_MENU "  Menu###menus")) {
+		_draw_menus();
+		ImGui::EndMenu();
+	}
+
+	_draw_toolbar(logo_end);
+	ImGui::EndMainMenuBar();
+	ImGui::PopStyleVar();
+}
+
+// Les menus de l'éditeur : en ligne dans la barre, ou en sous-menus du bouton « Menu ».
+void EditorNode::_draw_menus() {
 	if (ImGui::BeginMenu("Fichier")) {
 		if (ImGui::MenuItem(ICON_FILE_PLUS "  Nouvelle scène")) {
 			_check_unsaved_then([this]() { _new_scene(); });
@@ -800,14 +843,17 @@ void EditorNode::_draw_main_menu() {
 		ImGui::EndMenu();
 	}
 
-	_draw_toolbar();
-	ImGui::EndMainMenuBar();
-	ImGui::PopStyleVar();
+}
+
+float EditorNode::_get_play_buttons_width(float p_button_h) const {
+	return (p_button_h + ES(8)) * 4 + ES(2) * 3 + ES(8);
 }
 
 // Dans la barre de menus : au centre, le choix de l'espace de travail (2D, 3D, Script, Jeu) ;
-// à droite, les commandes de lecture.
-void EditorNode::_draw_toolbar() {
+// à droite, les commandes de lecture puis les boutons de la fenêtre. Quand la place manque,
+// les éléments se simplifient dans cet ordre : le compteur d'images disparaît, les espaces de
+// travail ne gardent que leur icône, puis les menus se regroupent (voir _draw_main_menu).
+void EditorNode::_draw_toolbar(float p_logo_end) {
 	using EditorUI::col;
 	using EditorUI::u32;
 	const bool playing = game.is_running();
@@ -821,6 +867,10 @@ void EditorNode::_draw_toolbar() {
 	const ImVec2 origin = ImGui::GetWindowPos();
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ES(12), (button_h - ImGui::GetFontSize()) * 0.5f));
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ES(2), 0));
+
+	// --- Boutons de la fenêtre (tout à droite, sur toute la hauteur de la barre) ---
+	const float window_buttons_w = _get_window_buttons_width();
+	const float right_edge = bar_w - window_buttons_w;
 
 	// --- Commandes de lecture (à droite) ---
 	struct PlayButton {
@@ -836,19 +886,29 @@ void EditorNode::_draw_toolbar() {
 		{ ICON_STOP "##stop", "Arrêter le jeu (F8)", palette.error, playing },
 	};
 	const float icon_w = button_h + ES(8);
-	const float play_w = icon_w * 4 + ES(2) * 3 + ES(8);
-	const float play_x = bar_w - play_w - ES(8);
+	const float play_w = _get_play_buttons_width(button_h);
+	const float play_x = right_edge - play_w - ES(8);
 
-	// --- Espaces de travail (au centre) ---
-	const char *workspaces[WORKSPACE_COUNT] = { ICON_VIEW_2D "  2D", ICON_VIEW_3D "  3D", ICON_DOCK_SCRIPT "  Script", ICON_DOCK_GAME "  Jeu" };
+	// --- Espaces de travail (au centre) : avec leur nom, ou réduits à leur icône ---
+	const char *workspaces[WORKSPACE_COUNT] = { ICON_VIEW_2D "  2D###ws_2d", ICON_VIEW_3D "  3D###ws_3d", ICON_DOCK_SCRIPT "  Script###ws_script", ICON_DOCK_GAME "  Jeu###ws_game" };
+	const char *workspace_icons[WORKSPACE_COUNT] = { ICON_VIEW_2D "###ws_2d", ICON_VIEW_3D "###ws_3d", ICON_DOCK_SCRIPT "###ws_script", ICON_DOCK_GAME "###ws_game" };
 	const char *workspace_tips[WORKSPACE_COUNT] = { "Vue 2D : canvas, sprites, interface", "Vue 3D : maillages, lumières, caméras", "Éditeur de script", "Le jeu en cours d'exécution" };
+	const float slot_x0 = menus_end + ES(16);
+	const float slot_x1 = play_x - ES(8);
 	float workspaces_w = ES(2) * (WORKSPACE_COUNT - 1);
 	for (const char *label : workspaces) {
 		workspaces_w += ImGui::CalcTextSize(label, nullptr, true).x + ES(12) * 2;
 	}
+	bool workspace_icons_only = false;
+	if (workspaces_w > slot_x1 - slot_x0) {
+		workspace_icons_only = true;
+		workspaces_w = icon_w * WORKSPACE_COUNT + ES(2) * (WORKSPACE_COUNT - 1);
+	}
+	const bool workspaces_visible = workspaces_w <= slot_x1 - slot_x0;
+	// Centrés dans la barre tant que c'est possible, sinon glissés dans la place libre.
 	float workspaces_x = std::floor((bar_w - workspaces_w) * 0.5f);
-	workspaces_x = std::max(workspaces_x, menus_end + ES(16));
-	if (workspaces_x + workspaces_w < play_x - ES(8)) {
+	workspaces_x = std::max(std::min(workspaces_x, slot_x1 - workspaces_w), slot_x0);
+	if (workspaces_visible) {
 		// Dans une barre de menus, SameLine() ramène à la hauteur de la ligne des menus : chaque
 		// élément est donc placé explicitement.
 		float x = workspaces_x;
@@ -857,7 +917,8 @@ void EditorNode::_draw_toolbar() {
 			const bool active = workspace_active == i;
 			ImGui::PushStyleColor(ImGuiCol_Button, active ? col(palette.accent, 0.18f) : ImVec4(0, 0, 0, 0));
 			ImGui::PushStyleColor(ImGuiCol_Text, col(active ? palette.accent : palette.text));
-			if (ImGui::Button(workspaces[i])) {
+			const bool pressed = workspace_icons_only ? ImGui::Button(workspace_icons[i], ImVec2(icon_w, button_h)) : ImGui::Button(workspaces[i]);
+			if (pressed) {
 				_switch_workspace(i);
 			}
 			ImGui::PopStyleColor(2);
@@ -865,12 +926,13 @@ void EditorNode::_draw_toolbar() {
 			x += ImGui::GetItemRectSize().x + ES(2);
 		}
 	}
+	const float workspaces_end = workspaces_visible ? workspaces_x + workspaces_w : menus_end;
 
 	if (play_x > menus_end + ES(8)) {
-		// Images par seconde, à gauche des commandes.
+		// Images par seconde, à gauche des commandes, s'il reste de la place.
 		const String info = vformat("%.0f i/s", ImGui::GetIO().Framerate);
 		const float info_w = ImGui::CalcTextSize(info.c_str()).x;
-		if (play_x - info_w - ES(14) > std::max(menus_end, workspaces_x + workspaces_w) + ES(8)) {
+		if (play_x - info_w - ES(14) > workspaces_end + ES(8)) {
 			dl->AddText(ImVec2(origin.x + play_x - info_w - ES(14), origin.y + (bar_h - ImGui::GetFontSize()) * 0.5f), u32(palette.text_dim), info.c_str());
 		}
 		// Fond commun aux quatre boutons.
@@ -911,6 +973,21 @@ void EditorNode::_draw_toolbar() {
 		ImGui::PopStyleColor();
 	}
 	ImGui::PopStyleVar(2);
+
+	// --- Boutons de la fenêtre et zones qui la déplacent ---
+	_draw_window_buttons(0.0f, bar_h);
+	if (window_buttons_w > 0.0f) {
+		// Tout ce qui n'est ni menu ni bouton : le logo et les vides entre les groupes.
+		const float top = origin.y, bottom = origin.y + bar_h;
+		_add_caption_area(origin.x, top, origin.x + p_logo_end, bottom);
+		if (workspaces_visible) {
+			_add_caption_area(origin.x + menus_end, top, origin.x + workspaces_x, bottom);
+			_add_caption_area(origin.x + workspaces_x + workspaces_w, top, origin.x + play_x, bottom);
+		} else {
+			_add_caption_area(origin.x + menus_end, top, origin.x + play_x, bottom);
+		}
+		_add_caption_area(origin.x + play_x + play_w, top, origin.x + right_edge, bottom);
+	}
 }
 
 // ---------------------------------------------------------------------------
