@@ -30,6 +30,7 @@
 #ifndef SDL_MAIN_HANDLED
 #define SDL_MAIN_HANDLED
 #endif
+#include <algorithm>
 #include <cstdlib>
 #include <sstream>
 #include <fstream>
@@ -309,6 +310,13 @@ int run_game(const CommandLine &p_cmd) {
 			running = false;
 		}
 
+		// Fenêtre plus grande que la résolution du projet : la 3D et le texte sont rendus à la
+		// taille réelle de l'image (voir SceneTree::set_render_scale).
+		if (runner.get_tree()) {
+			const Size2 output = display->window_get_size();
+			runner.get_tree()->set_render_scale(std::min(output.x / (float)width, output.y / (float)height));
+		}
+
 		rs->reset_stats();
 		rs->set_render_target(RID());
 		runner.draw();
@@ -443,6 +451,7 @@ int Main::run(int p_argc, char **p_argv) {
 		options.resizable = true;
 		options.maximized = !cmd.hidden;
 		options.vsync = true;
+		options.scale_with_screen = true;
 	} else {
 		options.title = GLOBAL_GET("application/name").as_string();
 		options.width = (int)GLOBAL_GET("display/width").as_int();
@@ -450,6 +459,7 @@ int Main::run(int p_argc, char **p_argv) {
 		options.resizable = GLOBAL_GET("display/resizable").as_bool();
 		options.fullscreen = GLOBAL_GET("display/fullscreen").as_bool();
 		options.vsync = GLOBAL_GET("display/vsync").as_bool();
+		options.scale_with_screen = true; // la fenêtre garde la même taille apparente sur un écran dense
 	}
 
 	int exit_code = 0;

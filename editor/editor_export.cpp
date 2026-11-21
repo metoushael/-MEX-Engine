@@ -7,6 +7,8 @@
 #include "core/os/os.h"
 #include "core/string/ustring.h"
 
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
 
@@ -142,7 +144,7 @@ void EditorNode::_draw_export_dialog() {
 	}
 	const ImGuiViewport *viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSizeConstraints(ImVec2(640, 0), ImVec2(640, FLT_MAX));
+	ImGui::SetNextWindowSizeConstraints(ImVec2(ES(640), 0), ImVec2(ES(640), FLT_MAX));
 	if (ImGui::Begin("Exporter le jeu###Export", &export_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::TextWrapped("Crée un dossier contenant l'exécutable du jeu et une archive « .pck » avec tous les fichiers du projet. Ce dossier peut être copié ou compressé tel quel pour distribuer le jeu.");
 		ImGui::Spacing();
@@ -154,7 +156,7 @@ void EditorNode::_draw_export_dialog() {
 		ImGui::InputText("##template", &export_template);
 		ImGui::TextDisabled("Par défaut : « mex-jeu », l'exécutable sans éditeur fourni à côté de l'éditeur (sinon l'éditeur\nlui-même). Pour un autre système, indiquez le mex-jeu de ce système (Windows, Linux, macOS).");
 		ImGui::Spacing();
-		if (ImGui::Button("Exporter", ImVec2(120, 0))) {
+		if (ImGui::Button("Exporter", ImVec2(ES(120), 0))) {
 			if (scene_root && scene_modified && !scene_path.empty()) {
 				_save_scene(scene_path);
 			}
@@ -170,12 +172,12 @@ void EditorNode::_draw_export_dialog() {
 			}
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Fermer", ImVec2(120, 0))) {
+		if (ImGui::Button("Fermer", ImVec2(ES(120), 0))) {
 			export_open = false;
 		}
 		if (!export_message.empty()) {
 			ImGui::Spacing();
-			ImGui::PushStyleColor(ImGuiCol_Text, export_failed ? ImVec4(1.0f, 0.45f, 0.4f, 1.0f) : ImVec4(0.55f, 0.9f, 0.55f, 1.0f));
+			ImGui::PushStyleColor(ImGuiCol_Text, EditorUI::col(export_failed ? palette.error : palette.success));
 			ImGui::TextWrapped("%s", export_message.c_str());
 			ImGui::PopStyleColor();
 		}

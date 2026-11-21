@@ -328,6 +328,7 @@ struct RenderingServer3D::Impl {
 
 	SDL_Renderer *renderer = nullptr;
 	bool available = false;
+	int max_anisotropy = 0; // 0 : extension absente
 	String info;
 	int msaa = 0;
 	int shadow_size = 2048;
@@ -600,6 +601,10 @@ void RenderingServer3D::set_shadow_distance(float p_distance) {
 	impl->shadow_distance = std::max(p_distance, 1.0f);
 }
 
+void RenderingServer3D::reset_stats() {
+	impl->stat_draw_calls = impl->stat_triangles = 0;
+}
+
 int RenderingServer3D::get_stat_draw_calls() const {
 	return impl->stat_draw_calls;
 }
@@ -628,6 +633,13 @@ void RenderingServer3D::init(SDL_Renderer *p_renderer, int p_msaa, int p_shadow_
 	const char *version = (const char *)GetString(VERSION);
 	const char *gpu = (const char *)GetString(RENDERER);
 	impl->info = String("OpenGL ") + (version ? version : "?") + " - " + (gpu ? gpu : "?");
+	// Filtrage anisotrope : les textures vues en biais (sols, murs) restent nettes au loin.
+	const char *extensions = (const char *)GetString((GLenum)0x1F03); // GL_EXTENSIONS
+	if (extensions && strstr(extensions, "GL_EXT_texture_filter_anisotropic")) {
+		GLint max_level = 0;
+		GetIntegerv((GLenum)0x84FF, &max_level); // GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+		impl->max_anisotropy = std::min((int)max_level, 8);
+	}
 
 	Impl::StateScope scope(p_renderer);
 	if (!impl->compile(impl->scene_program, "scène", SCENE_VERTEX, SCENE_FRAGMENT) ||
@@ -709,6 +721,9 @@ RID RenderingServer3D::texture_create(int p_width, int p_height, const uint8_t *
 	TexParameteri(TEXTURE_2D, TEXTURE_WRAP_T, p_repeat ? REPEAT : CLAMP_TO_EDGE);
 	TexParameteri(TEXTURE_2D, TEXTURE_MAG_FILTER, p_linear ? LINEAR : NEAREST);
 	TexParameteri(TEXTURE_2D, TEXTURE_MIN_FILTER, p_linear ? LINEAR_MIPMAP_LINEAR : NEAREST_MIPMAP_NEAREST);
+	if (p_linear && impl->max_anisotropy > 1) {
+		TexParameteri(TEXTURE_2D, (GLenum)0x84FE, impl->max_anisotropy); // GL_TEXTURE_MAX_ANISOTROPY_EXT
+	}
 	if (!GenerateMipmap) {
 		TexParameteri(TEXTURE_2D, GENERATE_MIPMAP, 1);
 	}

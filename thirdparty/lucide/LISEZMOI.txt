@@ -1,0 +1,7 @@
+Lucide 0.469.0 - https://lucide.dev - licence ISC (voir LICENSE.txt).
+
+lucide.ttf        police d'icônes complète (paquet lucide-static)
+codepoints.json   nom de chaque icône -> point de code
+
+L'éditeur n'embarque que les icônes qu'il utilise : editor/icons/generer_icones.py
+extrait ces glyphes et écrit editor/editor_icons.gen.h.

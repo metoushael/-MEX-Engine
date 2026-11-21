@@ -145,6 +145,11 @@ fenêtre et logo de l'éditeur) et `platform/windows/mex.ico` (icône de `mex.ex
   par exemple `res://icone.png`).
 - **Windows** : `mex.exe` et `mex-jeu.exe` portent l'icône et les informations de version
   (`platform/windows/mex.rc.in`).
-- **Linux** : `platform/linux/mex.desktop` et `mex.png` pour ajouter MEX au menu des applications.
-- **Éditeur** : thème indigo et orange, logo dans le gestionnaire de projets et dans
-  *Aide → À propos de MEX*.
+- **Linux** : `platform/linux/mex.desktop` et l'icône `branding/png/mex-icone-256.png` (fournie
+  sous le nom `mex.png` dans l'archive Linux) pour ajouter MEX au menu des applications.
+- **Éditeur** : le thème par défaut, « MEX Nuit », reprend l'indigo et l'orange de la marque ;
+  les autres thèmes (Ardoise bleue, Graphite, Minuit, Aurore, Forêt, Clair, Contraste élevé,
+  Personnalisé) changent les couleurs de l'interface, jamais celles du logo. Le logo figure
+  dans le gestionnaire de projets, la barre de menus et *Aide → À propos de MEX*.
+- **Icônes de l'éditeur** : jeu d'icônes au trait Lucide (licence ISC), d'épaisseur constante,
+  teintées par le thème. Elles ne remplacent jamais le logo.

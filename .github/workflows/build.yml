@@ -1,12 +1,22 @@
-# Compile MEX pour Linux, Windows et macOS.
+# Compile MEX pour Linux, Windows et macOS, puis publie les archives dans les
+# « Releases » du dépôt GitHub.
 #
-# - À chaque envoi sur la branche principale ou demande de fusion : compilation et
-#   essai ; les archives restent disponibles dans l'onglet « Actions » (Artifacts).
-# - À chaque étiquette « v... » (par exemple v0.2.0) : les archives sont en plus
-#   publiées dans une « Release » GitHub.
+# - Envoi sur la branche principale (main ou master) : les archives remplacent celles
+#   de la préversion « Dernière compilation » (étiquette « continu »). Elle suit donc
+#   toujours le dernier envoi.
+# - Étiquette « v... » : une version numérotée est publiée.
 #
-#       git tag v0.2.0
-#       git push origin v0.2.0
+#       git tag v0.3.0
+#       git push origin v0.3.0
+#
+# - Sans ligne de commande : onglet « Actions », « Compilation et publication »,
+#   bouton « Run workflow », champ « Version à publier » (par exemple v0.3.0).
+#   L'étiquette est créée par le flux de travail. Champ vide : « Dernière compilation ».
+# - Demande de fusion : compilation et essais seulement, rien n'est publié. Les archives
+#   restent quand même téléchargeables depuis la page de l'exécution (Artifacts).
+#
+# Si l'étape « Publication » échoue avec « Resource not accessible by integration » :
+# Settings > Actions > General > Workflow permissions > « Read and write permissions ».
 name: Compilation et publication
 
 on:
@@ -15,6 +25,12 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à publier (ex. v0.3.0). Vide : « Dernière compilation »."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -24,8 +40,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Décide du nom des archives et de ce qui sera publié.
+  prepare:
+    name: Préparation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      label: ${{ steps.plan.outputs.label }}
+      tag: ${{ steps.plan.outputs.tag }}
+      kind: ${{ steps.plan.outputs.kind }}
+    steps:
+      - name: Plan de publication
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          short=${GITHUB_SHA::7}
+          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$REQUESTED" ]; then
+            # Version demandée à la main : « 0.3.0 » est accepté pour « v0.3.0 ».
+            tag="v${REQUESTED#v}"
+            if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+(\.[0-9]+){1,2}(-[0-9A-Za-z.]+)?$'; then
+              echo "::error::Version invalide : « $REQUESTED ». Exemples : v0.3.0, v1.0.0-beta1."
+              exit 1
+            fi
+            kind=version; label="$tag"; version="${tag#v}"
+          elif [ "$REF_TYPE" = "tag" ]; then
+            tag="$REF_NAME"; kind=version; label="$tag"; version="${tag#v}"
+          elif [ "$EVENT" = "pull_request" ]; then
+            tag=""; kind=aucune; label="dev"; version="dev-$short"
+          else
+            tag="continu"; kind=continu; label="continu"; version="dev-$short"
+          fi
+          {
+            echo "version=$version"
+            echo "label=$label"
+            echo "tag=$tag"
+            echo "kind=$kind"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version : $version, archives : mex-$label-*, publication : $kind $tag" | tee -a "$GITHUB_STEP_SUMMARY"
+
   build:
     name: ${{ matrix.name }}
+    needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -48,9 +108,9 @@ jobs:
       run:
         shell: ${{ matrix.shell }}
     env:
-      # v0.2.0 -> 0.2.0 ; hors étiquette : « dev ».
-      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
-      PACKAGE: mex-${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}-${{ matrix.platform }}
+      # Version affichée par le moteur (« 0.3.0 », ou « dev-1a2b3c4 » hors version numérotée).
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PACKAGE: mex-${{ needs.prepare.outputs.label }}-${{ matrix.platform }}
 
     steps:
       - name: Récupération des sources
@@ -84,7 +144,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DMEX_VENDORED_SDL=ON \
             -DMEX_STATIC_RUNTIME=ON \
-            -DMEX_VERSION="${VERSION#v}"
+            -DMEX_VERSION="$VERSION"
           cmake --build build
           mkdir -p dist
           cp build/bin/mex* dist/
@@ -101,7 +161,7 @@ jobs:
               -DCMAKE_OSX_ARCHITECTURES="$arch" \
               -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
               -DMEX_VENDORED_SDL=ON \
-              -DMEX_VERSION="${VERSION#v}"
+              -DMEX_VERSION="$VERSION"
             cmake --build "build-$arch" --parallel 4
           done
           mkdir -p dist
@@ -148,6 +208,9 @@ jobs:
           # physique), le moteur se contentant d'avertir que le rendu 3D est désactivé.
           essai dist/mex-jeu --path projects/demo3d --quit-after 120
           essai dist/mex -e --path projects/demo3d --quit-after 30
+          # Éditeur lancé hors d'un projet : page d'accueil (gestionnaire de projets).
+          mkdir -p vide
+          (cd vide && essai ../dist/mex --quit-after 30)
 
       # Sous Linux, le rendu 3D est essayé pour de bon : serveur X virtuel et OpenGL logiciel
       # de Mesa (llvmpipe). Les exécuteurs Windows et macOS n'offrent pas d'équivalent simple.
@@ -181,6 +244,7 @@ jobs:
           cp thirdparty/imgui/LICENSE.txt "$PACKAGE/licences/imgui.txt"
           cp thirdparty/stb/LICENSE.txt "$PACKAGE/licences/stb.txt"
           cp thirdparty/fonts/LICENSE.txt "$PACKAGE/licences/roboto.txt"
+          cp thirdparty/lucide/LICENSE.txt "$PACKAGE/licences/lucide.txt"
           sdl_source=$(ls -d build*/_deps/mex_sdl2-src | head -n 1)
           cp "$sdl_source/LICENSE.txt" "$PACKAGE/licences/sdl2.txt"
           if [ "$RUNNER_OS" = "Windows" ]; then
@@ -201,13 +265,17 @@ jobs:
 
   release:
     name: Publication
-    needs: build
+    needs: [prepare, build]
     # Publie les plateformes qui ont réussi, même si une autre a échoué.
-    if: ${{ !cancelled() && github.ref_type == 'tag' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.kind != 'aucune' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
+    # Deux publications de la même version ne se croisent jamais.
+    concurrency:
+      group: publication-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
     steps:
       - name: Récupération des archives
         uses: actions/download-artifact@v8
@@ -215,11 +283,14 @@ jobs:
           path: release
           merge-multiple: true
 
-      - name: Publication de la version
+      - name: Publication
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          LABEL: ${{ needs.prepare.outputs.label }}
+          KIND: ${{ needs.prepare.outputs.kind }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           cd release
           count=$(find . -maxdepth 1 -name 'mex-*' | wc -l)
@@ -231,36 +302,55 @@ jobs:
           cat SHA256SUMS.txt
 
           {
+            if [ "$KIND" = "continu" ]; then
+              echo "Compilation automatique du dernier envoi sur la branche \`$GITHUB_REF_NAME\` (\`${GITHUB_SHA::7}\`, version \`$VERSION\`)."
+              echo "Elle est remplacée à chaque envoi : pour une version stable, prenez une version numérotée."
+              echo
+            fi
             echo "## Téléchargements"
             echo
             echo "| Système | Fichier |"
             echo "| --- | --- |"
-            echo "| Windows 10 ou 11 (64 bits) | \`mex-$TAG-windows-x86_64.zip\` |"
-            echo "| Linux x86_64 (glibc 2.39 ou plus récente : Ubuntu 24.04, Debian 13, Fedora 40...) | \`mex-$TAG-linux-x86_64.tar.gz\` |"
-            echo "| macOS 11 ou plus récent (Intel et Apple Silicon) | \`mex-$TAG-macos-universal.tar.gz\` |"
+            echo "| Windows 10 ou 11 (64 bits) | \`mex-$LABEL-windows-x86_64.zip\` |"
+            echo "| Linux x86_64 (glibc 2.39 ou plus récente : Ubuntu 24.04, Debian 13, Fedora 40...) | \`mex-$LABEL-linux-x86_64.tar.gz\` |"
+            echo "| macOS 11 ou plus récent (Intel et Apple Silicon) | \`mex-$LABEL-macos-universal.tar.gz\` |"
             echo
             echo "Décompressez l'archive puis lancez \`mex\` (\`mex.exe\` sous Windows). Le fichier README.md de l'archive explique la suite."
             echo
             echo "Sous macOS, les exécutables ne sont pas signés par un développeur identifié. Après la décompression, dans le Terminal :"
             echo
-            echo "    xattr -dr com.apple.quarantine mex-$TAG-macos-universal"
+            echo "    xattr -dr com.apple.quarantine mex-$LABEL-macos-universal"
             if [ "$count" -lt 3 ]; then
               echo
-              echo "> **Attention :** la compilation a échoué pour au moins un système ; son archive manque dans cette version."
+              echo "> **Attention :** la compilation a échoué pour au moins un système ; son archive manque dans cette publication."
             fi
           } > ../notes.md
 
-          # Une étiquette comme v0.2.0-beta1 donne une préversion.
-          options=()
-          case "$TAG" in *-*) options+=(--prerelease) ;; esac
-
-          if gh release view "$TAG" > /dev/null 2>&1; then
+          if [ "$KIND" = "continu" ]; then
+            # Préversion glissante : l'ancienne publication et son étiquette sont supprimées,
+            # puis recréées sur le commit qui vient d'être compilé.
+            gh release delete "$TAG" --cleanup-tag --yes > /dev/null 2>&1 || true
+            gh release create "$TAG" mex-* SHA256SUMS.txt \
+              --target "$GITHUB_SHA" \
+              --title "MEX - Dernière compilation" \
+              --notes-file ../notes.md \
+              --prerelease \
+              --latest=false
+          elif gh release view "$TAG" > /dev/null 2>&1; then
+            # La version existe déjà (nouvelle exécution) : ses fichiers sont remplacés.
             gh release upload "$TAG" mex-* SHA256SUMS.txt --clobber
           else
+            # Une étiquette comme v0.3.0-beta1 donne une préversion.
+            options=()
+            case "$TAG" in *-*) options+=(--prerelease) ;; esac
+            # --target : crée l'étiquette si elle n'existe pas encore (publication lancée à
+            # la main) ; sans effet si elle existe déjà.
             gh release create "$TAG" mex-* SHA256SUMS.txt \
-              --verify-tag \
+              --target "$GITHUB_SHA" \
               --title "MEX $TAG" \
               --notes-file ../notes.md \
               --generate-notes \
               "${options[@]}"
           fi
+          url=$(gh release view "$TAG" --json url --jq .url)
+          echo "Publié : $url" | tee -a "$GITHUB_STEP_SUMMARY"

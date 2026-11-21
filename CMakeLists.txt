@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 # Le nom du projet est en minuscules exprès : project(MEX) créerait une variable MEX_VERSION
 # qui masquerait l'option du même nom ci-dessous dès la deuxième configuration.
-project(mex VERSION 0.2.0 LANGUAGES C CXX)
+project(mex VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,7 +17,12 @@ option(MEX_BUILD_TEMPLATE "Compile aussi mex-jeu, l'exécutable sans éditeur co
 option(MEX_VENDORED_SDL "Télécharge SDL2 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée" OFF)
 option(MEX_STATIC_RUNTIME "GCC / MinGW : lie statiquement les bibliothèques du compilateur (aucune DLL à fournir sous Windows)" OFF)
 option(MEX_WINDOWS_GUI "Windows : application graphique, sans fenêtre de console" ON)
-set(MEX_VERSION "${PROJECT_VERSION}" CACHE STRING "Numéro de version affiché par le moteur")
+# Vide : le numéro de project() ci-dessus. La valeur par défaut n'est pas copiée dans le cache,
+# sinon un dossier de compilation existant garderait l'ancien numéro après une mise à jour.
+set(MEX_VERSION "" CACHE STRING "Numéro de version affiché par le moteur (vide : celui du projet)")
+if("${MEX_VERSION}" STREQUAL "")
+	set(MEX_VERSION "${PROJECT_VERSION}")
+endif()
 
 # --- SDL2 -------------------------------------------------------------------
 if(MEX_VENDORED_SDL)

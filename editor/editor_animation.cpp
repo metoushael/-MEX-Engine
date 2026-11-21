@@ -7,6 +7,8 @@
 #include "scene/animation/animation_player.h"
 #include "scene/main/node.h"
 
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "misc/cpp/imgui_stdlib.h"
@@ -158,7 +160,7 @@ void EditorNode::_draw_animation_dock() {
 		ImGui::SetNextWindowFocus();
 		focus_animation = false;
 	}
-	if (!ImGui::Begin("Animation###Animation")) {
+	if (!ImGui::Begin(ICON_DOCK_ANIMATION "  Animation###Animation")) {
 		ImGui::End();
 		return;
 	}
@@ -203,7 +205,7 @@ void EditorNode::_draw_animated_sprite_editor(AnimatedSprite2D *p_sprite) {
 		}
 	}
 	if (frame_count <= 1) {
-		ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "La texture n'est pas découpée : réglez Hframes / Vframes dans l'inspecteur.");
+		ImGui::TextColored(EditorUI::col(palette.warning), "La texture n'est pas découpée : réglez Hframes / Vframes dans l'inspecteur.");
 	}
 
 	// Aperçu : avance l'animation comme en jeu.
@@ -350,7 +352,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 	}
 
 	// --- Barre : choix de l'animation -------------------------------------------------
-	ImGui::SetNextItemWidth(170);
+	ImGui::SetNextItemWidth(ES(170));
 	if (ImGui::BeginCombo("##anim", anim_current.empty() ? "(aucune animation)" : anim_current.c_str())) {
 		const Array names = animations.keys();
 		for (const Variant &key : names.vec()) {
@@ -410,7 +412,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 	ImGui::TextUnformatted("Durée (s)");
 	ImGui::SameLine();
 	float length = p_player->get_animation_length(anim_current);
-	ImGui::SetNextItemWidth(70);
+	ImGui::SetNextItemWidth(ES(70));
 	if (ImGui::DragFloat("##length", &length, 0.01f, 0.05f, 600.0f, "%.2f")) {
 		p_player->set_animation_length(anim_current, Math::clamp(length, 0.05f, 600.0f));
 		_mark_modified();
@@ -431,7 +433,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 
 	// --- Barre : lecture ---------------------------------------------------------------
 	bool apply = false;
-	if (ImGui::Button(anim_playing ? "Pause" : "Lire", ImVec2(60, 0))) {
+	if (ImGui::Button(anim_playing ? "Pause" : "Lire", ImVec2(ES(60), 0))) {
 		anim_playing = !anim_playing;
 		if (anim_playing && anim_time >= length) {
 			anim_time = 0;
@@ -448,7 +450,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 	ImGui::TextUnformatted("Temps");
 	ImGui::SameLine();
 	float time = (float)anim_time;
-	ImGui::SetNextItemWidth(70);
+	ImGui::SetNextItemWidth(ES(70));
 	if (ImGui::DragFloat("##time", &time, 0.01f, 0.0f, length, "%.2f")) {
 		anim_time = Math::clamp(time, 0.0f, length);
 		anim_playing = false;
@@ -456,7 +458,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 	}
 	if (!anim_backup.empty()) {
 		ImGui::SameLine();
-		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.35f, 0.15f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Button, EditorUI::col(palette.accent, 0.55f));
 		if (ImGui::Button("Terminer l'aperçu")) {
 			_anim_end_preview();
 		}
@@ -499,7 +501,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextUnformatted("Nouvelle piste :");
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(130);
+		ImGui::SetNextItemWidth(ES(130));
 		if (ImGui::BeginCombo("##track_node", anim_track_node == "." ? (base->get_name() + " (.)").c_str() : anim_track_node.c_str())) {
 			for (const String &path : paths) {
 				if (ImGui::Selectable(path == "." ? (base->get_name() + " (.)").c_str() : path.c_str(), path == anim_track_node)) {
@@ -511,7 +513,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 		}
 		Node *track_node = anim_track_node == "." ? base : base->get_node_or_null(anim_track_node);
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(120);
+		ImGui::SetNextItemWidth(ES(120));
 		if (ImGui::BeginCombo("##track_property", anim_track_property.empty() ? "propriété..." : anim_track_property.c_str())) {
 			if (track_node) {
 				std::vector<PropertyInfo> list;
@@ -567,7 +569,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 			anim_playing = false;
 			apply = true;
 		}
-		draw_list->AddRectFilled(origin, ImVec2(origin.x + timeline_width, origin.y + row_height), IM_COL32(40, 44, 54, 255));
+		draw_list->AddRectFilled(origin, ImVec2(origin.x + timeline_width, origin.y + row_height), EditorUI::u32(palette.bg_dark));
 		// Pas des graduations : environ une tous les 60 pixels.
 		const double steps[] = { 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60 };
 		double step = 60;
@@ -579,10 +581,10 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 		}
 		for (double t = 0; t <= length + 0.0001; t += step) {
 			const float x = time_to_x(origin.x, t);
-			draw_list->AddLine(ImVec2(x, origin.y + row_height - 6), ImVec2(x, origin.y + row_height), IM_COL32(150, 155, 170, 255));
+			draw_list->AddLine(ImVec2(x, origin.y + row_height - 6), ImVec2(x, origin.y + row_height), EditorUI::u32(palette.text_dim));
 			char label[32];
 			snprintf(label, sizeof(label), step < 1 ? "%.2f" : "%.0f", t);
-			draw_list->AddText(ImVec2(x + 3, origin.y + 1), IM_COL32(150, 155, 170, 255), label);
+			draw_list->AddText(ImVec2(x + 3, origin.y + 1), EditorUI::u32(palette.text_dim), label);
 		}
 	}
 
@@ -627,7 +629,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 			if (node) {
 				ImGui::Text("%s : %s", path == "." ? base->get_name().c_str() : path.c_str(), property.c_str());
 			} else {
-				ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s : %s", path.c_str(), property.c_str());
+				ImGui::TextColored(EditorUI::col(palette.error), "%s : %s", path.c_str(), property.c_str());
 			}
 			ImGui::PopClipRect();
 		}
@@ -639,7 +641,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 		const bool strip_clicked = ImGui::IsItemClicked();
 		const bool strip_active = ImGui::IsItemActive();
 		const bool strip_hovered = ImGui::IsItemHovered();
-		draw_list->AddRectFilled(origin, ImVec2(origin.x + timeline_width, origin.y + row_height - 2), IM_COL32(30, 33, 41, 255));
+		draw_list->AddRectFilled(origin, ImVec2(origin.x + timeline_width, origin.y + row_height - 2), EditorUI::u32(palette.frame));
 		const int key_count = p_player->track_get_key_count(anim_current, track);
 		const float mouse_x = ImGui::GetIO().MousePos.x;
 		int hovered_key = -1;
@@ -695,7 +697,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 			const float x = time_to_x(origin.x, p_player->track_get_key_time(anim_current, track, i));
 			const float y = origin.y + (row_height - 2) * 0.5f;
 			const bool is_selected = anim_selected_track == track && anim_selected_key == i;
-			const ImU32 color = is_selected ? IM_COL32(255, 200, 80, 255) : (i == hovered_key ? IM_COL32(200, 225, 255, 255) : IM_COL32(120, 170, 255, 255));
+			const ImU32 color = is_selected ? EditorUI::u32(palette.accent) : (i == hovered_key ? EditorUI::u32(palette.text) : EditorUI::u32(palette.info));
 			draw_list->AddQuadFilled(ImVec2(x, y - 6), ImVec2(x + 6, y), ImVec2(x, y + 6), ImVec2(x - 6, y), color);
 		}
 		// Curseur de temps.
@@ -732,7 +734,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 			ImGui::SameLine();
 			float key_time = p_player->track_get_key_time(anim_current, track, anim_selected_key);
 			Variant value = p_player->track_get_key_value(anim_current, track, anim_selected_key);
-			ImGui::SetNextItemWidth(70);
+			ImGui::SetNextItemWidth(ES(70));
 			if (ImGui::DragFloat("##key_time", &key_time, 0.01f, 0.0f, length, "%.2f")) {
 				key_time = Math::clamp(key_time, 0.0f, length);
 				p_player->track_remove_key(anim_current, track, anim_selected_key);
@@ -761,7 +763,7 @@ void EditorNode::_draw_animation_player_editor(AnimationPlayer *p_player) {
 				}
 			}
 			ImGui::PushID("key_value");
-			ImGui::SetNextItemWidth(240);
+			ImGui::SetNextItemWidth(ES(240));
 			if (_edit_property(node ? (Object *)node : (Object *)p_player, info, value)) {
 				p_player->track_insert_key(anim_current, track, key_time, value);
 				apply = true;

@@ -12,27 +12,12 @@
 #include "scene/resources/packed_scene.h"
 #include "core/object/script_language.h"
 
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
 
 namespace {
-
-// Couleur d'un type de nœud dans l'arbre (comme les familles d'icônes de Godot).
-ImVec4 _class_color(const String &p_class) {
-	if (ClassDB::is_parent_class(p_class, "Control")) {
-		return ImVec4(0.56f, 0.86f, 0.56f, 1.0f);
-	}
-	if (ClassDB::is_parent_class(p_class, "Node2D")) {
-		return ImVec4(0.55f, 0.72f, 0.98f, 1.0f);
-	}
-	if (ClassDB::is_parent_class(p_class, "Node3D")) {
-		return ImVec4(0.98f, 0.60f, 0.56f, 1.0f);
-	}
-	if (ClassDB::is_parent_class(p_class, "CanvasLayer")) {
-		return ImVec4(0.85f, 0.75f, 0.50f, 1.0f);
-	}
-	return ImVec4(0.88f, 0.88f, 0.88f, 1.0f);
-}
 
 bool _extension_matches(const String &p_path, const std::vector<String> &p_extensions) {
 	if (p_extensions.empty()) {
@@ -48,7 +33,7 @@ bool _extension_matches(const String &p_path, const std::vector<String> &p_exten
 // Dock « Scène »
 // ---------------------------------------------------------------------------
 void EditorNode::_draw_scene_dock() {
-	if (!ImGui::Begin("Scène###SceneDock")) {
+	if (!ImGui::Begin(ICON_DOCK_SCENE "  Scène###SceneDock")) {
 		ImGui::End();
 		return;
 	}
@@ -73,14 +58,14 @@ void EditorNode::_draw_scene_dock() {
 	}
 
 	Node *selected = _get_selected();
-	if (ImGui::Button("+ Nœud")) {
+	if (ImGui::Button(ICON_PLUS "  Nœud")) {
 		create_dialog.open_request = true;
 		create_dialog.as_root = false;
 		create_dialog.parent_id = (selected && _is_editable(selected) ? selected : scene_root)->get_instance_id();
 	}
 	ImGui::SetItemTooltip("Ajouter un nœud enfant au nœud sélectionné");
 	ImGui::SameLine();
-	if (ImGui::Button("+ Scène")) {
+	if (ImGui::Button(ICON_FILE_SCENE "  Instancier")) {
 		const ObjectID parent_id = (selected && _is_editable(selected) ? selected : scene_root)->get_instance_id();
 		_open_file_dialog("Instancier une scène", { "scn" }, false, [this, parent_id](const String &p_path) {
 			_instance_scene(p_path, Object::cast_to<Node>(ObjectDB::get_instance(parent_id)));
@@ -156,14 +141,12 @@ void EditorNode::_draw_scene_node(Node *p_node) {
 			rename_id = 0;
 		}
 	} else {
-		ImVec4 color = _class_color(p_node->get_class());
-		if (hidden) {
-			color.w = 0.45f;
-		}
-		String label = p_node->get_name();
-		ImGui::PushStyleColor(ImGuiCol_Text, color);
-		open = ImGui::TreeNodeEx("##node", flags, "%s", label.c_str());
-		ImGui::PopStyleColor();
+		// Le libellé est dessiné par-dessus un nœud d'arbre vide : icône à la couleur de la
+		// famille (2D, 3D, interface), nom à la couleur du texte.
+		const ImVec2 row = ImGui::GetCursorScreenPos();
+		open = ImGui::TreeNodeEx("##node", flags, "%s", "");
+		const float alpha = hidden ? 0.45f : 1.0f;
+		EditorUI::tree_label(row, _class_icon(p_node->get_class()), EditorUI::u32(_class_color(p_node->get_class()), alpha), p_node->get_name().c_str(), EditorUI::u32(palette.text, alpha));
 
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
 			_select(p_node);
@@ -229,17 +212,22 @@ void EditorNode::_draw_scene_node(Node *p_node) {
 			ImGui::EndPopup();
 		}
 
-		// Pastilles à droite : script, instance.
+		// Pastilles à droite : scène instanciée, script attaché, nœud masqué.
 		String badges;
 		if (is_instance) {
-			badges += " [scène]";
+			badges += ICON_FILE_SCENE " ";
 		}
 		if (has_script) {
-			badges += " [script]";
+			badges += ICON_FILE_SCRIPT " ";
+		}
+		if (hidden) {
+			badges += ICON_EYE_OFF " ";
 		}
 		if (!badges.empty()) {
-			ImGui::SameLine();
-			ImGui::TextDisabled("%s", badges.c_str());
+			const float width = ImGui::CalcTextSize(badges.c_str()).x;
+			const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x + ImGui::GetScrollX();
+			const float label_end = row.x + ImGui::GetFontSize() * 2.6f + ImGui::GetStyle().FramePadding.x * 2 + ImGui::CalcTextSize(p_node->get_name().c_str()).x;
+			ImGui::GetWindowDrawList()->AddText(ImVec2(std::max(right - width, label_end + ES(8)), row.y), EditorUI::u32(palette.text_dim), badges.c_str());
 		}
 	}
 
@@ -422,32 +410,111 @@ void EditorNode::_open_file(const String &p_path) {
 	}
 }
 
+const EditorNode::FsEntry *EditorNode::_find_fs_entry(const FsEntry &p_entry, const String &p_path) const {
+	if (p_entry.path == p_path) {
+		return &p_entry;
+	}
+	for (const FsEntry &child : p_entry.children) {
+		if (child.is_dir && (child.path == p_path || str_begins_with(p_path, child.path + "/"))) {
+			return _find_fs_entry(child, p_path);
+		}
+	}
+	return nullptr;
+}
+
+void EditorNode::_fs_dir_menu(const String &p_path) {
+	if (ImGui::MenuItem(ICON_FOLDER_PLUS "  Nouveau dossier...")) {
+		fs_new_kind = 1;
+		fs_new_dir = p_path;
+		fs_new_name = "nouveau_dossier";
+	}
+	if (ImGui::MenuItem(ICON_FILE_PLUS "  Nouveau script...")) {
+		fs_new_kind = 2;
+		fs_new_dir = p_path;
+		fs_new_name = "nouveau_script.mx";
+	}
+	if (ImGui::MenuItem(ICON_REFRESH "  Actualiser")) {
+		fs_dirty = true;
+	}
+}
+
+// Comportement commun à un fichier, dans l'arbre comme dans la grille : sélection, ouverture
+// au double-clic, glisser-déposer, menu contextuel, aperçu au survol.
+void EditorNode::_fs_file_interactions(const String &p_path) {
+	const String ext = path_get_extension(p_path);
+	if (ImGui::IsItemClicked(ImGuiMouseButton_Left) || ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+		fs_selected = p_path;
+	}
+	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+		const String path = p_path;
+		_defer([this, path]() { _open_file(path); });
+	}
+	if (ImGui::BeginDragDropSource()) {
+		ImGui::SetDragDropPayload("MEX_FILE", p_path.c_str(), p_path.size() + 1);
+		ImGui::TextColored(EditorUI::col(_file_color(p_path)), "%s", _file_icon(p_path));
+		ImGui::SameLine();
+		ImGui::TextUnformatted(p_path.c_str());
+		ImGui::EndDragDropSource();
+	} else if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_NoSharedDelay) && pref_thumbnails && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+		_draw_preview_tooltip(p_path);
+	}
+	if (ImGui::BeginPopupContextItem("##ctx")) {
+		const String path = p_path;
+		if (ImGui::MenuItem("Ouvrir")) {
+			_defer([this, path]() { _open_file(path); });
+		}
+		if (ext == "scn") {
+			if (ImGui::MenuItem("Instancier dans la scène")) {
+				_defer([this, path]() {
+					Node *selected = _get_selected();
+					_instance_scene(path, selected && _is_editable(selected) ? selected : scene_root);
+				});
+			}
+			if (ImGui::MenuItem("Définir comme scène principale")) {
+				ProjectSettings::get_singleton()->set_setting("application/main_scene", Variant(path));
+				ProjectSettings::get_singleton()->save();
+				print_line("Scène principale : " + path);
+			}
+		}
+		if (ImGui::MenuItem("Copier le chemin")) {
+			ImGui::SetClipboardText(path.c_str());
+		}
+		ImGui::Separator();
+		if (ImGui::MenuItem("Supprimer...")) {
+			_confirm("Supprimer le fichier", "Supprimer définitivement « " + path + " » ?", {
+																								   { "Supprimer", [this, path]() {
+																										if (FileAccess::remove(path) != OK) {
+																											print_error("Impossible de supprimer : " + path);
+																										}
+																										fs_dirty = true;
+																									} },
+																								   { "Annuler", nullptr },
+																						   });
+		}
+		ImGui::EndPopup();
+	}
+}
+
 void EditorNode::_draw_fs_entry(const FsEntry &p_entry) {
+	using EditorUI::col;
 	ImGui::PushID(p_entry.path.c_str());
 	if (p_entry.is_dir) {
-		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
+		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_AllowOverlap;
 		if (p_entry.path == "res://") {
 			flags |= ImGuiTreeNodeFlags_DefaultOpen;
 		}
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.80f, 0.55f, 1.0f));
-		const bool open = ImGui::TreeNodeEx("##dir", flags, "%s", p_entry.name.c_str());
-		ImGui::PopStyleColor();
+		const bool open = ImGui::TreeNodeEx("##dir", flags, "%s", "");
+		if (ImGui::IsItemClicked()) {
+			fs_current_dir = p_entry.path;
+		}
 		if (ImGui::BeginPopupContextItem("##ctx")) {
-			if (ImGui::MenuItem("Nouveau dossier...")) {
-				fs_new_kind = 1;
-				fs_new_dir = p_entry.path;
-				fs_new_name = "nouveau_dossier";
-			}
-			if (ImGui::MenuItem("Nouveau script...")) {
-				fs_new_kind = 2;
-				fs_new_dir = p_entry.path;
-				fs_new_name = "nouveau_script.mx";
-			}
-			if (ImGui::MenuItem("Actualiser")) {
-				fs_dirty = true;
-			}
+			_fs_dir_menu(p_entry.path);
 			ImGui::EndPopup();
 		}
+		ImGui::SameLine(0, 0);
+		ImGui::TextColored(col(palette.folder), "%s", open ? ICON_FOLDER_OPEN : ICON_FOLDER);
+		ImGui::SameLine();
+		ImGui::TextUnformatted(p_entry.name.c_str());
 		if (open) {
 			for (const FsEntry &child : p_entry.children) {
 				_draw_fs_entry(child);
@@ -455,92 +522,223 @@ void EditorNode::_draw_fs_entry(const FsEntry &p_entry) {
 			ImGui::TreePop();
 		}
 	} else {
-		const String ext = path_get_extension(p_entry.name);
-		ImVec4 color(0.82f, 0.84f, 0.86f, 1.0f);
-		if (ext == "scn") {
-			color = ImVec4(0.55f, 0.72f, 0.98f, 1.0f);
-		} else if (ext == "mx") {
-			color = ImVec4(0.60f, 0.90f, 0.70f, 1.0f);
-		} else if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp") {
-			color = ImVec4(0.93f, 0.66f, 0.80f, 1.0f);
-		} else if (ext == "wav") {
-			color = ImVec4(0.95f, 0.78f, 0.50f, 1.0f);
+		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
+		if (fs_selected == p_entry.path) {
+			flags |= ImGuiTreeNodeFlags_Selected;
 		}
-		ImGui::PushStyleColor(ImGuiCol_Text, color);
-		ImGui::TreeNodeEx("##file", ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "%s", p_entry.name.c_str());
-		ImGui::PopStyleColor();
-		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-			const String path = p_entry.path;
-			_defer([this, path]() { _open_file(path); });
+		ImGui::TreeNodeEx("##file", flags, "%s", "");
+		_fs_file_interactions(p_entry.path);
+		ImGui::SameLine(0, 0);
+		// Une miniature à la place de l'icône quand le fichier a une image d'aperçu.
+		const float side = ImGui::GetTextLineHeight();
+		const FilePreview *preview = _get_preview(p_entry.path);
+		if (_has_preview_image(preview)) {
+			const ImVec2 pos = ImGui::GetCursorScreenPos();
+			ImGui::Dummy(ImVec2(side + ES(2), side));
+			_draw_preview(p_entry.path, Vector2(pos.x, pos.y), Vector2(pos.x + side, pos.y + side));
+		} else {
+			ImGui::TextColored(col(_file_color(p_entry.path)), "%s", _file_icon(p_entry.path));
 		}
-		if (ImGui::BeginDragDropSource()) {
-			ImGui::SetDragDropPayload("MEX_FILE", p_entry.path.c_str(), p_entry.path.size() + 1);
-			ImGui::TextUnformatted(p_entry.path.c_str());
-			ImGui::EndDragDropSource();
-		}
-		if (ImGui::BeginPopupContextItem("##ctx")) {
-			const String path = p_entry.path;
-			if (ImGui::MenuItem("Ouvrir")) {
-				_defer([this, path]() { _open_file(path); });
-			}
-			if (ext == "scn") {
-				if (ImGui::MenuItem("Instancier dans la scène")) {
-					_defer([this, path]() {
-						Node *selected = _get_selected();
-						_instance_scene(path, selected && _is_editable(selected) ? selected : scene_root);
-					});
-				}
-				if (ImGui::MenuItem("Définir comme scène principale")) {
-					ProjectSettings::get_singleton()->set_setting("application/main_scene", Variant(path));
-					ProjectSettings::get_singleton()->save();
-					print_line("Scène principale : " + path);
-				}
-			}
-			if (ImGui::MenuItem("Copier le chemin")) {
-				ImGui::SetClipboardText(path.c_str());
-			}
-			ImGui::Separator();
-			if (ImGui::MenuItem("Supprimer...")) {
-				_confirm("Supprimer le fichier", "Supprimer définitivement « " + path + " » ?", {
-																									   { "Supprimer", [this, path]() {
-																											if (FileAccess::remove(path) != OK) {
-																												print_error("Impossible de supprimer : " + path);
-																											}
-																											fs_dirty = true;
-																										} },
-																									   { "Annuler", nullptr },
-																							   });
-			}
-			ImGui::EndPopup();
-		}
+		ImGui::SameLine();
+		ImGui::TextUnformatted(p_entry.name.c_str());
 	}
 	ImGui::PopID();
 }
 
+// Grille de miniatures du dossier courant.
+void EditorNode::_draw_fs_grid() {
+	using EditorUI::col;
+	using EditorUI::u32;
+	const ImGuiStyle &style = ImGui::GetStyle();
+	const FsEntry *dir = _find_fs_entry(fs_root, fs_current_dir);
+	if (!dir || !dir->is_dir) {
+		fs_current_dir = "res://";
+		dir = &fs_root;
+	}
+	// --- Fil d'Ariane ---
+	ImGui::BeginDisabled(fs_current_dir == "res://");
+	if (ImGui::Button(ICON_ARROW_UP)) {
+		String parent = path_get_base_dir(fs_current_dir);
+		fs_current_dir = (parent.empty() || parent == "res:" || parent == "res:/") ? String("res://") : parent;
+	}
+	ImGui::EndDisabled();
+	ImGui::SetItemTooltip("Dossier parent");
+	ImGui::SameLine();
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextColored(col(palette.folder), ICON_FOLDER_OPEN);
+	ImGui::SameLine();
+	ImGui::TextUnformatted(fs_current_dir.c_str());
+
+	ImGui::BeginChild("##grid", ImVec2(0, 0), ImGuiChildFlags_None);
+	if (ImGui::BeginPopupContextWindow("##gridctx", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+		_fs_dir_menu(fs_current_dir);
+		ImGui::EndPopup();
+	}
+	const float thumb = ES(pref_thumbnail_size);
+	const float cell_w = thumb + ES(18);
+	const float cell_h = thumb + ImGui::GetTextLineHeight() + ES(16);
+	const float avail = ImGui::GetContentRegionAvail().x;
+	const int columns = std::max(1, (int)((avail + style.ItemSpacing.x) / (cell_w + style.ItemSpacing.x)));
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	String enter_dir;
+	int column = 0;
+	if (dir->children.empty()) {
+		ImGui::TextDisabled("Ce dossier est vide.");
+	}
+	for (const FsEntry &entry : dir->children) {
+		ImGui::PushID(entry.path.c_str());
+		if (column > 0) {
+			ImGui::SameLine();
+		}
+		column = (column + 1) % columns;
+		const ImVec2 pos = ImGui::GetCursorScreenPos();
+		ImGui::InvisibleButton("##cell", ImVec2(cell_w, cell_h));
+		const bool hovered = ImGui::IsItemHovered();
+		const bool selected = !entry.is_dir && fs_selected == entry.path;
+		if (entry.is_dir) {
+			if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+				enter_dir = entry.path;
+			}
+			if (ImGui::BeginPopupContextItem("##ctx")) {
+				_fs_dir_menu(entry.path);
+				ImGui::EndPopup();
+			}
+			ImGui::SetItemTooltip("%s\nDouble-clic pour ouvrir le dossier", entry.path.c_str());
+		} else {
+			_fs_file_interactions(entry.path);
+		}
+		if (selected) {
+			dl->AddRectFilled(pos, ImVec2(pos.x + cell_w, pos.y + cell_h), u32(palette.accent, 0.20f), style.FrameRounding);
+			dl->AddRect(pos, ImVec2(pos.x + cell_w, pos.y + cell_h), u32(palette.accent, 0.8f), style.FrameRounding);
+		} else if (hovered) {
+			dl->AddRectFilled(pos, ImVec2(pos.x + cell_w, pos.y + cell_h), u32(palette.bg_light), style.FrameRounding);
+		}
+		const ImVec2 box(pos.x + ES(9), pos.y + ES(6));
+		if (entry.is_dir || !_draw_preview(entry.path, Vector2(box.x, box.y), Vector2(box.x + thumb, box.y + thumb))) {
+			// Pas d'image d'aperçu : une grande icône.
+			const char *icon = entry.is_dir ? ICON_FOLDER : _file_icon(entry.path);
+			const float icon_size = thumb * 0.62f;
+			ImFont *font = ImGui::GetFont();
+			const ImVec2 size = font->CalcTextSizeA(icon_size, FLT_MAX, 0.0f, icon);
+			dl->AddText(font, icon_size, ImVec2(box.x + (thumb - size.x) * 0.5f, box.y + (thumb - size.y) * 0.5f), u32(entry.is_dir ? palette.folder : _file_color(entry.path)), icon);
+		}
+		// Nom, centré, coupé s'il dépasse.
+		const float name_w = ImGui::CalcTextSize(entry.name.c_str()).x;
+		const float text_y = pos.y + ES(6) + thumb + ES(4);
+		const ImVec4 clip(pos.x + ES(3), text_y, pos.x + cell_w - ES(3), text_y + ImGui::GetTextLineHeight());
+		const float text_x = name_w <= cell_w - ES(6) ? pos.x + (cell_w - name_w) * 0.5f : pos.x + ES(3);
+		dl->AddText(nullptr, 0.0f, ImVec2(text_x, text_y), u32(palette.text), entry.name.c_str(), nullptr, 0.0f, &clip);
+		ImGui::PopID();
+	}
+	ImGui::EndChild();
+	if (!enter_dir.empty()) {
+		fs_current_dir = enter_dir;
+	}
+}
+
+// Fiche du fichier sélectionné, en bas du dock : grand aperçu et informations.
+void EditorNode::_draw_fs_preview_panel() {
+	using EditorUI::col;
+	using EditorUI::u32;
+	const float side = ES(104);
+	const ImVec2 pos = ImGui::GetCursorScreenPos();
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	ImGui::Dummy(ImVec2(side, side));
+	dl->AddRectFilled(pos, ImVec2(pos.x + side, pos.y + side), u32(palette.frame), ImGui::GetStyle().FrameRounding);
+	const float margin = ES(4);
+	if (!_draw_preview(fs_selected, Vector2(pos.x + margin, pos.y + margin), Vector2(pos.x + side - margin, pos.y + side - margin))) {
+		const char *icon = _file_icon(fs_selected);
+		const float icon_size = side * 0.5f;
+		ImFont *font = ImGui::GetFont();
+		const ImVec2 size = font->CalcTextSizeA(icon_size, FLT_MAX, 0.0f, icon);
+		dl->AddText(font, icon_size, ImVec2(pos.x + (side - size.x) * 0.5f, pos.y + (side - size.y) * 0.5f), u32(_file_color(fs_selected)), icon);
+	}
+	ImGui::SameLine();
+	ImGui::BeginGroup();
+	ImGui::PushTextWrapPos(0.0f);
+	ImGui::TextUnformatted(path_get_file(fs_selected).c_str());
+	static const char *kinds[] = { "Fichier", "Image", "Maillage 3D", "Scène", "Son", "Texte" };
+	const int kind = _get_preview_kind(fs_selected);
+	ImGui::TextColored(col(_file_color(fs_selected)), "%s", path_get_extension(fs_selected) == "mx" ? "Script MexScript" : kinds[kind]);
+	const FilePreview *preview = _get_preview(fs_selected);
+	if (preview && preview->ready && !preview->info.empty()) {
+		ImGui::TextDisabled("%s", preview->info.c_str());
+	}
+	ImGui::TextDisabled("%s", fs_selected.c_str());
+	ImGui::PopTextWrapPos();
+	ImGui::EndGroup();
+}
+
 void EditorNode::_draw_filesystem_dock() {
-	if (!ImGui::Begin("Fichiers###FilesDock")) {
+	if (!ImGui::Begin(ICON_DOCK_FILES "  Fichiers###FilesDock")) {
 		ImGui::End();
 		return;
 	}
-	if (ImGui::Button("Actualiser")) {
+	// --- Barre d'outils ---
+	if (ImGui::Button(ICON_REFRESH)) {
 		fs_dirty = true;
+		_clear_previews();
 	}
+	ImGui::SetItemTooltip("Actualiser la liste et les aperçus");
 	ImGui::SameLine();
-	if (ImGui::Button("+ Script")) {
+	if (ImGui::Button(ICON_FILE_PLUS)) {
 		fs_new_kind = 2;
-		fs_new_dir = "res://";
+		fs_new_dir = pref_files_grid ? fs_current_dir : String("res://");
 		fs_new_name = "nouveau_script.mx";
 	}
+	ImGui::SetItemTooltip("Nouveau script");
 	ImGui::SameLine();
-	if (ImGui::Button("+ Dossier")) {
+	if (ImGui::Button(ICON_FOLDER_PLUS)) {
 		fs_new_kind = 1;
-		fs_new_dir = "res://";
+		fs_new_dir = pref_files_grid ? fs_current_dir : String("res://");
 		fs_new_name = "nouveau_dossier";
 	}
-	ImGui::Separator();
-	ImGui::BeginChild("##files", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
-	_draw_fs_entry(fs_root);
+	ImGui::SetItemTooltip("Nouveau dossier");
+	ImGui::SameLine();
+	if (ImGui::Button(pref_files_grid ? ICON_DOCK_SCENE : ICON_NODE_CONTAINER)) {
+		pref_files_grid = !pref_files_grid;
+		_save_prefs();
+	}
+	ImGui::SetItemTooltip("%s", pref_files_grid ? "Afficher l'arborescence" : "Afficher une grille de miniatures");
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	ImGui::InputTextWithHint("##fsfilter", ICON_SEARCH "  Filtrer les fichiers", &fs_filter);
+
+	// --- Liste, puis fiche du fichier sélectionné ---
+	const bool show_panel = !fs_selected.empty() && std::find(fs_files.begin(), fs_files.end(), fs_selected) != fs_files.end();
+	const float panel_h = show_panel ? ES(104) + ImGui::GetStyle().ItemSpacing.y * 2 + 1.0f : 0.0f;
+	ImGui::BeginChild("##files", ImVec2(0, -panel_h), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
+	const String filter = str_to_lower(str_strip(fs_filter));
+	if (!filter.empty()) {
+		// Recherche : liste à plat des fichiers dont le chemin contient le texte.
+		int shown = 0;
+		for (const String &path : fs_files) {
+			if (str_to_lower(path).find(filter) == String::npos) {
+				continue;
+			}
+			shown++;
+			ImGui::PushID(path.c_str());
+			ImGui::TreeNodeEx("##file", ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap | (fs_selected == path ? ImGuiTreeNodeFlags_Selected : 0), "%s", "");
+			_fs_file_interactions(path);
+			ImGui::SameLine(0, 0);
+			ImGui::TextColored(EditorUI::col(_file_color(path)), "%s", _file_icon(path));
+			ImGui::SameLine();
+			ImGui::TextUnformatted(path.substr(6).c_str());
+			ImGui::PopID();
+		}
+		if (shown == 0) {
+			ImGui::TextDisabled("Aucun fichier ne correspond.");
+		}
+	} else if (pref_files_grid) {
+		_draw_fs_grid();
+	} else {
+		_draw_fs_entry(fs_root);
+	}
 	ImGui::EndChild();
+	if (show_panel) {
+		ImGui::Separator();
+		_draw_fs_preview_panel();
+	}
 	ImGui::End();
 
 	// Création d'un dossier ou d'un script.
@@ -551,12 +749,12 @@ void EditorNode::_draw_filesystem_dock() {
 	const char *title = fs_new_kind == 1 ? "Nouveau dossier###FsNew" : "Nouveau script###FsNew";
 	if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::Text("Dans : %s", fs_new_dir.c_str());
-		ImGui::SetNextItemWidth(320);
+		ImGui::SetNextItemWidth(ES(320));
 		if (ImGui::IsWindowAppearing()) {
 			ImGui::SetKeyboardFocusHere();
 		}
 		const bool entered = ImGui::InputText("##name", &fs_new_name, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
-		if (ImGui::Button("Créer", ImVec2(120, 0)) || entered) {
+		if (ImGui::Button("Créer", ImVec2(ES(120), 0)) || entered) {
 			const String name = str_strip(fs_new_name);
 			if (!name.empty()) {
 				String path = path_join(fs_new_dir, name);
@@ -582,13 +780,14 @@ void EditorNode::_draw_filesystem_dock() {
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Annuler", ImVec2(120, 0))) {
+		if (ImGui::Button("Annuler", ImVec2(ES(120), 0))) {
 			fs_new_kind = 0;
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndPopup();
 	}
 }
+
 
 // ---------------------------------------------------------------------------
 // Dock « Sortie »
@@ -598,15 +797,15 @@ void EditorNode::_draw_console_dock() {
 		ImGui::SetNextWindowFocus();
 		focus_viewport = true; // la vue 2D (dessinée ensuite) reprend le focus clavier
 	}
-	if (!ImGui::Begin("Sortie###Console")) {
+	if (!ImGui::Begin(ICON_DOCK_OUTPUT "  Sortie###Console")) {
 		ImGui::End();
 		return;
 	}
-	if (ImGui::Button("Effacer")) {
+	if (ImGui::Button(ICON_TRASH "  Effacer")) {
 		console_lines.clear();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Copier")) {
+	if (ImGui::Button(ICON_COPY "  Copier")) {
 		String all;
 		for (const ConsoleLine &line : console_lines) {
 			all += line.text + "\n";
@@ -628,11 +827,11 @@ void EditorNode::_draw_console_dock() {
 	while (clipper.Step()) {
 		for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
 			const ConsoleLine &line = console_lines[i];
-			ImVec4 color(0.82f, 0.84f, 0.86f, 1.0f);
+			ImVec4 color = EditorUI::col(palette.text);
 			if (line.level == PRINT_ERROR) {
-				color = ImVec4(1.0f, 0.45f, 0.45f, 1.0f);
+				color = EditorUI::col(palette.error);
 			} else if (line.level == PRINT_WARNING) {
-				color = ImVec4(1.0f, 0.83f, 0.40f, 1.0f);
+				color = EditorUI::col(palette.warning);
 			}
 			ImGui::PushStyleColor(ImGuiCol_Text, color);
 			if (line.count > 1) {
@@ -681,7 +880,7 @@ void EditorNode::_draw_dialogs() {
 	}
 	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	if (ImGui::BeginPopupModal((confirm_dialog.title + "###Confirm").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-		ImGui::PushTextWrapPos(460);
+		ImGui::PushTextWrapPos(ES(460));
 		ImGui::TextUnformatted(confirm_dialog.message.c_str());
 		ImGui::PopTextWrapPos();
 		ImGui::Spacing();
@@ -691,7 +890,7 @@ void EditorNode::_draw_dialogs() {
 			if (i > 0) {
 				ImGui::SameLine();
 			}
-			if (ImGui::Button(confirm_dialog.buttons[i].first.c_str(), ImVec2(150, 0))) {
+			if (ImGui::Button(confirm_dialog.buttons[i].first.c_str(), ImVec2(ES(150), 0))) {
 				std::function<void()> action = confirm_dialog.buttons[i].second;
 				if (action) {
 					_defer(action);
@@ -709,7 +908,7 @@ void EditorNode::_draw_dialogs() {
 		ImGui::OpenPopup("###FileDialog");
 	}
 	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(600, 460), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(ES(600), ES(460)), ImGuiCond_Appearing);
 	if (ImGui::BeginPopupModal((file_dialog.title + "###FileDialog").c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings)) {
 		String chosen;
 		ImGui::SetNextItemWidth(-FLT_MIN);
@@ -751,12 +950,12 @@ void EditorNode::_draw_dialogs() {
 			if (ImGui::InputTextWithHint("##filename", "res://dossier/nom", &file_dialog.filename, ImGuiInputTextFlags_EnterReturnsTrue)) {
 				chosen = file_dialog.filename;
 			}
-			if (ImGui::Button("Valider", ImVec2(120, 0))) {
+			if (ImGui::Button("Valider", ImVec2(ES(120), 0))) {
 				chosen = file_dialog.filename;
 			}
 			ImGui::SameLine();
 		}
-		if (ImGui::Button("Annuler", ImVec2(120, 0))) {
+		if (ImGui::Button("Annuler", ImVec2(ES(120), 0))) {
 			ImGui::CloseCurrentPopup();
 		}
 		if (!chosen.empty()) {
@@ -782,6 +981,7 @@ void EditorNode::_draw_dialogs() {
 	_draw_create_node_dialog();
 	_draw_connect_dialog();
 	_draw_project_settings();
+	_draw_preferences();
 	_draw_about();
 }
 
@@ -794,11 +994,11 @@ void EditorNode::_draw_create_class_tree(const String &p_class, const String &p_
 	if (!p_filter.empty()) {
 		// Liste à plat des classes correspondant au filtre.
 		if (can_create && str_match_nocase(p_class, p_filter)) {
-			ImGui::PushStyleColor(ImGuiCol_Text, _class_color(p_class));
-			if (ImGui::Selectable(p_class.c_str(), create_dialog.selected == p_class, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_NoAutoClosePopups)) {
+			const ImVec2 row = ImGui::GetCursorScreenPos();
+			if (ImGui::Selectable(("##" + p_class).c_str(), create_dialog.selected == p_class, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_NoAutoClosePopups)) {
 				create_dialog.selected = p_class;
 			}
-			ImGui::PopStyleColor();
+			EditorUI::icon_label(row, _class_icon(p_class), EditorUI::u32(_class_color(p_class)), p_class.c_str(), EditorUI::u32(palette.text));
 		}
 		for (const String &child : inheriters) {
 			_draw_create_class_tree(child, p_filter);
@@ -813,13 +1013,10 @@ void EditorNode::_draw_create_class_tree(const String &p_class, const String &p_
 	if (create_dialog.selected == p_class) {
 		flags |= ImGuiTreeNodeFlags_Selected;
 	}
-	ImVec4 color = _class_color(p_class);
-	if (!can_create) {
-		color.w = 0.5f;
-	}
-	ImGui::PushStyleColor(ImGuiCol_Text, color);
-	const bool open = ImGui::TreeNodeEx(p_class.c_str(), flags);
-	ImGui::PopStyleColor();
+	const ImVec2 row = ImGui::GetCursorScreenPos();
+	const bool open = ImGui::TreeNodeEx(p_class.c_str(), flags, "%s", "");
+	const float alpha = can_create ? 1.0f : 0.5f;
+	EditorUI::tree_label(row, _class_icon(p_class), EditorUI::u32(_class_color(p_class), alpha), p_class.c_str(), EditorUI::u32(palette.text, alpha));
 	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen() && can_create) {
 		create_dialog.selected = p_class;
 	}
@@ -841,7 +1038,7 @@ void EditorNode::_draw_create_node_dialog() {
 		ImGui::OpenPopup("Créer un nœud###CreateNode");
 	}
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(440, 540), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(ES(440), ES(540)), ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal("Créer un nœud###CreateNode", nullptr, ImGuiWindowFlags_NoSavedSettings)) {
 		return;
 	}
@@ -874,12 +1071,12 @@ void EditorNode::_draw_create_node_dialog() {
 	}
 
 	ImGui::BeginDisabled(!ClassDB::can_instantiate(create_dialog.selected));
-	if (ImGui::Button(("Créer " + create_dialog.selected).c_str(), ImVec2(220, 0))) {
+	if (ImGui::Button(("Créer " + create_dialog.selected).c_str(), ImVec2(ES(220), 0))) {
 		create = true;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
-	if (ImGui::Button("Annuler", ImVec2(120, 0))) {
+	if (ImGui::Button("Annuler", ImVec2(ES(120), 0))) {
 		ImGui::CloseCurrentPopup();
 	}
 	if (create && ClassDB::can_instantiate(create_dialog.selected) && ClassDB::is_parent_class(create_dialog.selected, "Node")) {
@@ -910,9 +1107,10 @@ void EditorNode::_draw_about() {
 		ImGui::BulletText("Dear ImGui %s (MIT)", ImGui::GetVersion());
 		ImGui::BulletText("stb_image, stb_truetype (domaine public / MIT)");
 		ImGui::BulletText("Police Roboto (Apache 2.0)");
+		ImGui::BulletText("Icônes Lucide (ISC)");
 		ImGui::BulletText("Police Poppins, tracés du logo (SIL OFL 1.1)");
 		ImGui::Spacing();
-		if (ImGui::Button("Fermer", ImVec2(120, 0))) {
+		if (ImGui::Button("Fermer", ImVec2(ES(120), 0))) {
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndPopup();

@@ -13,6 +13,7 @@ class DisplayServer {
 	SDL_Window *window = nullptr;
 	SDL_Renderer *renderer = nullptr;
 	bool fullscreen = false;
+	float screen_scale = 1.0f;
 
 public:
 	struct WindowOptions {
@@ -24,11 +25,18 @@ public:
 		bool maximized = false;
 		bool vsync = true;
 		bool hidden = false;
+		// Agrandit la fenêtre selon l'échelle d'affichage du système (écrans à haute densité).
+		bool scale_with_screen = false;
 	};
 
 	static DisplayServer *get_singleton() { return singleton; }
 
 	Error create(const WindowOptions &p_options);
+	// Échelle d'affichage du système : 1 = 100 %, 1.5 = 150 %... (toujours 1 sous macOS, où
+	// la densité est donnée par get_pixel_ratio()).
+	float get_screen_scale() const { return screen_scale; }
+	// Pixels réels par unité de fenêtre (2 sur un écran Retina, 1 ailleurs en général).
+	float get_pixel_ratio() const;
 	void set_icon(const uint8_t *p_rgba, int p_width, int p_height);
 	void destroy();
 

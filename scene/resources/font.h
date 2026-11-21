@@ -18,11 +18,13 @@ class Font : public Resource {
 		real_t ascent = 0;
 		real_t descent = 0;
 		real_t line_height = 0;
+		real_t oversampling = 1;
 	};
 
 	std::vector<uint8_t> data;
 	mutable std::map<int, SizeCache> cache;
 	static Ref<Font> default_font;
+	static int oversampling_q; // suréchantillonnage, en quarts (4 = x1)
 
 	const SizeCache &_get_cache(int p_size) const;
 
@@ -31,6 +33,12 @@ protected:
 
 public:
 	static Ref<Font> get_default();
+	// Suréchantillonnage des glyphes : quand l'image du jeu est agrandie (grande fenêtre, écran
+	// à haute densité), les caractères sont tracés à la taille réellement affichée et restent
+	// nets. Les mesures (largeur, hauteur de ligne) ne changent pas. Les éléments déjà dessinés
+	// doivent être redessinés (CanvasItem::queue_redraw) pour en profiter.
+	static void set_oversampling(float p_factor);
+	static float get_oversampling() { return oversampling_q / 4.0f; }
 	static void free_default();
 	// Données TTF de la police embarquée (Roboto Medium), réutilisées par l'éditeur.
 	static const unsigned char *get_embedded_data(unsigned int &r_size);

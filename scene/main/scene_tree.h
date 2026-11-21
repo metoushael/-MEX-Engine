@@ -60,6 +60,8 @@ private:
 	RID canvas;
 	RID space;
 	Size2 viewport_size = Size2(1152, 648);
+	float render_scale = 1.0f;
+	float drawn_render_scale = 1.0f;
 	Transform2D canvas_transform;
 	std::vector<CanvasLayer *> canvas_layers;
 	std::vector<PhysicsSyncListener *> physics_listeners;
@@ -133,6 +135,11 @@ public:
 	RID get_space() const { return space; }
 	void set_viewport_size(const Size2 &p_size);
 	Size2 get_viewport_size() const { return viewport_size; }
+	// Rapport entre les pixels réellement affichés et la résolution logique (fenêtre agrandie,
+	// écran à haute densité). La 3D est rendue à cette définition et le texte tracé à cette
+	// taille : l'image reste nette quelle que soit la taille de la fenêtre.
+	void set_render_scale(float p_scale);
+	float get_render_scale() const { return render_scale; }
 	void set_canvas_transform(const Transform2D &p_xform) { canvas_transform = p_xform; }
 	Transform2D get_canvas_transform() const { return canvas_transform; }
 	void set_current_camera(ObjectID p_camera) { current_camera = p_camera; }

@@ -125,7 +125,9 @@ public:
 	void free_rid(RID p_rid);
 
 	// --- Frame ---
-	void set_render_target(RID p_texture); // RID() = écran
+	// RID() = écran. p_scale : facteur appliqué à tout ce qui est dessiné dans la cible (une
+	// cible deux fois plus grande que la résolution logique se dessine avec p_scale = 2).
+	void set_render_target(RID p_texture, float p_scale = 1.0f);
 	void clear(const Color &p_color);
 	void draw_canvas(RID p_canvas, const Transform2D &p_xform);
 	// Dessin immédiat (grille de l'éditeur...).

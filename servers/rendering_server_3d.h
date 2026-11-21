@@ -147,6 +147,7 @@ public:
 	void free_rid(RID p_rid);
 
 	void set_shadow_distance(float p_distance);
+	void reset_stats(); // les compteurs sont aussi remis à zéro au début de chaque rendu
 	int get_stat_draw_calls() const;
 	int get_stat_triangles() const;
 

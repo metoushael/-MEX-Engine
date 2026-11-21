@@ -7,6 +7,7 @@
 #include "core/io/resource_loader.h"
 #include "scene/main/canvas_item.h"
 #include "scene/main/canvas_layer.h"
+#include "scene/resources/font.h"
 #include "scene/resources/packed_scene.h"
 #include "scene/3d/visual_3d.h"
 #include "servers/physics_server_2d.h"
@@ -196,7 +197,26 @@ void SceneTree::_update_canvas_order(Node *p_node, int &r_index) {
 	}
 }
 
+void SceneTree::set_render_scale(float p_scale) {
+	// Par quarts : un redimensionnement progressif de la fenêtre ne régénère pas tout à chaque image.
+	render_scale = Math::clamp(std::round(p_scale * 4.0f) / 4.0f, 0.25f, 4.0f);
+}
+
+static void _queue_redraw_all(Node *p_node) {
+	if (CanvasItem *item = Object::cast_to<CanvasItem>(p_node)) {
+		item->queue_redraw();
+	}
+	for (Node *child : p_node->get_children_vector()) {
+		_queue_redraw_all(child);
+	}
+}
+
 void SceneTree::draw(const Transform2D *p_override_xform) {
+	Font::set_oversampling(render_scale);
+	if (render_scale != drawn_render_scale) {
+		drawn_render_scale = render_scale;
+		_queue_redraw_all(root); // le texte est retracé à la nouvelle taille
+	}
 	CanvasItem::flush_redraws();
 	RenderingServer *rs = RenderingServer::get_singleton();
 	if (!edit_mode && !p_override_xform) {
@@ -255,7 +275,8 @@ void SceneTree::_draw_3d() {
 	if (!rs3d || !rs3d->is_available() || !camera) {
 		return;
 	}
-	const int w = std::max(1, (int)viewport_size.x), h = std::max(1, (int)viewport_size.y);
+	// La 3D est rendue à la définition réellement affichée, puis posée sur la résolution logique.
+	const int w = std::max(1, (int)std::round(viewport_size.x * render_scale)), h = std::max(1, (int)std::round(viewport_size.y * render_scale));
 	if (!viewport_3d.is_valid()) {
 		viewport_3d = rs3d->viewport_create(w, h);
 	} else if (rs3d->viewport_get_size(viewport_3d) != Size2((real_t)w, (real_t)h)) {

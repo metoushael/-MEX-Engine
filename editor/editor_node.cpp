@@ -16,6 +16,9 @@
 #include "scene/resources/packed_scene.h"
 #include "servers/display_server.h"
 
+#define MEX_EDITOR_ICONS_DATA
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_sdlrenderer2.h"
@@ -25,6 +28,8 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <cmath>
+#include <ctime>
 #include <set>
 
 static void _redraw_recursive(Node *p_node) {
@@ -54,104 +59,36 @@ void EditorNode::_setup_imgui() {
 	io.ConfigWindowsMoveFromTitleBarOnly = true;
 	io.ConfigDragClickToInputText = true;
 
-	// La disposition des panneaux est mémorisée dans le dossier de préférences de l'utilisateur.
-	if (char *pref = SDL_GetPrefPath("Metoushela", "MEX")) {
-		ini_path = String(pref) + "editor_layout.ini";
-		SDL_free(pref);
+	// Préférences (thème, échelle...) et disposition des panneaux : dans le dossier de
+	// préférences de l'utilisateur.
+	_load_prefs();
+	if (!prefs_dir.empty()) {
+		ini_path = prefs_dir + "editor_layout.ini";
 		io.IniFilename = ini_path.c_str();
 	} else {
 		io.IniFilename = nullptr;
 	}
 
+	// Police de l'interface : Roboto, complétée par les icônes (police Lucide réduite aux
+	// glyphes utilisés). Les deux sont vectorielles : ImGui les trace à la taille demandée,
+	// l'interface reste nette à toutes les échelles.
 	unsigned int font_size = 0;
 	const unsigned char *font_data = Font::get_embedded_data(font_size);
 	ImFontConfig cfg;
 	cfg.FontDataOwnedByAtlas = false;
 	font_ui = io.Fonts->AddFontFromMemoryTTF((void *)font_data, (int)font_size, 16.0f, &cfg);
+	ImFontConfig icons;
+	icons.FontDataOwnedByAtlas = false;
+	icons.MergeMode = true;
+	icons.GlyphOffset = ImVec2(0.0f, 2.5f); // les icônes occupent tout le cadratin : recentrage vertical
+	icons.GlyphMinAdvanceX = 16.0f;
+	io.Fonts->AddFontFromMemoryTTF((void *)EDITOR_ICONS_TTF, (int)EDITOR_ICONS_TTF_SIZE, 16.0f, &icons);
 	font_mono = io.Fonts->AddFontDefaultVector();
 
 	_apply_style();
 
 	ImGui_ImplSDL2_InitForSDLRenderer(display->get_window(), display->get_renderer());
 	ImGui_ImplSDLRenderer2_Init(display->get_renderer());
-}
-
-void EditorNode::_apply_style() {
-	ImGui::StyleColorsDark();
-	ImGuiStyle &style = ImGui::GetStyle();
-	style.WindowRounding = 4.0f;
-	style.ChildRounding = 4.0f;
-	style.FrameRounding = 3.0f;
-	style.PopupRounding = 4.0f;
-	style.GrabRounding = 3.0f;
-	style.TabRounding = 4.0f;
-	style.ScrollbarRounding = 6.0f;
-	style.WindowPadding = ImVec2(8, 8);
-	style.FramePadding = ImVec2(7, 4);
-	style.ItemSpacing = ImVec2(7, 5);
-	style.IndentSpacing = 16.0f;
-	style.WindowBorderSize = 1.0f;
-	style.FrameBorderSize = 0.0f;
-	style.WindowMenuButtonPosition = ImGuiDir_None;
-
-	ImVec4 *c = style.Colors;
-	// Couleurs de la marque (voir branding/CHARTE.md) : fonds tirés de l'Indigo nuit,
-	// accent Orange MEX.
-	const ImVec4 bg(0.102f, 0.110f, 0.188f, 1.0f);
-	const ImVec4 bg_dark(0.071f, 0.075f, 0.145f, 1.0f);
-	const ImVec4 bg_light(0.165f, 0.176f, 0.290f, 1.0f);
-	const ImVec4 frame(0.055f, 0.059f, 0.122f, 1.0f);
-	const ImVec4 border(0.043f, 0.047f, 0.098f, 1.0f);
-	const ImVec4 accent(1.0f, 0.478f, 0.0f, 1.0f);
-	const ImVec4 accent_dim(1.0f, 0.478f, 0.0f, 0.42f);
-	c[ImGuiCol_Text] = ImVec4(0.89f, 0.90f, 0.94f, 1.0f);
-	c[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.52f, 0.66f, 1.0f);
-	c[ImGuiCol_WindowBg] = bg;
-	c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-	c[ImGuiCol_PopupBg] = ImVec4(0.086f, 0.090f, 0.165f, 0.98f);
-	c[ImGuiCol_Border] = border;
-	c[ImGuiCol_FrameBg] = frame;
-	c[ImGuiCol_FrameBgHovered] = ImVec4(0.110f, 0.118f, 0.220f, 1.0f);
-	c[ImGuiCol_FrameBgActive] = ImVec4(0.150f, 0.160f, 0.290f, 1.0f);
-	c[ImGuiCol_TitleBg] = bg_dark;
-	c[ImGuiCol_TitleBgActive] = bg_dark;
-	c[ImGuiCol_TitleBgCollapsed] = bg_dark;
-	c[ImGuiCol_MenuBarBg] = bg_dark;
-	c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0.12f);
-	c[ImGuiCol_ScrollbarGrab] = ImVec4(0.27f, 0.29f, 0.43f, 1.0f);
-	c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.35f, 0.37f, 0.53f, 1.0f);
-	c[ImGuiCol_ScrollbarGrabActive] = accent;
-	c[ImGuiCol_CheckMark] = accent;
-	c[ImGuiCol_SliderGrab] = accent;
-	c[ImGuiCol_SliderGrabActive] = ImVec4(1.0f, 0.64f, 0.10f, 1.0f);
-	c[ImGuiCol_Button] = bg_light;
-	c[ImGuiCol_ButtonHovered] = ImVec4(0.22f, 0.24f, 0.38f, 1.0f);
-	c[ImGuiCol_ButtonActive] = accent_dim;
-	c[ImGuiCol_Header] = ImVec4(0.18f, 0.19f, 0.32f, 1.0f);
-	c[ImGuiCol_HeaderHovered] = ImVec4(0.23f, 0.25f, 0.40f, 1.0f);
-	c[ImGuiCol_HeaderActive] = accent_dim;
-	c[ImGuiCol_Separator] = border;
-	c[ImGuiCol_SeparatorHovered] = accent_dim;
-	c[ImGuiCol_SeparatorActive] = accent;
-	c[ImGuiCol_ResizeGrip] = ImVec4(0, 0, 0, 0);
-	c[ImGuiCol_ResizeGripHovered] = accent_dim;
-	c[ImGuiCol_ResizeGripActive] = accent;
-	c[ImGuiCol_Tab] = bg_dark;
-	c[ImGuiCol_TabHovered] = ImVec4(0.21f, 0.23f, 0.37f, 1.0f);
-	c[ImGuiCol_TabSelected] = bg;
-	c[ImGuiCol_TabSelectedOverline] = accent;
-	c[ImGuiCol_TabDimmed] = bg_dark;
-	c[ImGuiCol_TabDimmedSelected] = bg;
-	c[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0, 0, 0, 0);
-	c[ImGuiCol_DockingPreview] = accent_dim;
-	c[ImGuiCol_DockingEmptyBg] = bg_dark;
-	c[ImGuiCol_TableHeaderBg] = bg_dark;
-	c[ImGuiCol_TableBorderStrong] = border;
-	c[ImGuiCol_TableBorderLight] = ImVec4(0.09f, 0.10f, 0.18f, 1.0f);
-	c[ImGuiCol_TextSelectedBg] = accent_dim;
-	c[ImGuiCol_DragDropTarget] = accent;
-	c[ImGuiCol_NavCursor] = accent;
-	c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, 0.5f);
 }
 
 void EditorNode::_shutdown_imgui() {
@@ -205,6 +142,10 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 
 	while (running) {
 		const uint64_t frame_start = os->get_ticks_usec();
+		if (style_dirty) {
+			_apply_style(); // entre deux images : jamais pendant le parcours de l'interface
+		}
+		pixel_ratio = display->get_pixel_ratio();
 		_run_test_commands(frame_count, false);
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
@@ -231,10 +172,13 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 		_commit_undo_if_idle();
 
 		// --- Simulation du jeu en cours ---
+		uint64_t game_process_usec = 0, game_draw_usec = 0;
 		if (game.is_running() && !game_paused) {
+			const uint64_t start = os->get_ticks_usec();
 			Engine::get_singleton()->set_editor_hint(false);
 			const bool keep_running = game.iterate(frame_delta);
 			Engine::get_singleton()->set_editor_hint(true);
+			game_process_usec = os->get_ticks_usec() - start;
 			if (!keep_running) {
 				_defer([this]() { _stop(); });
 			}
@@ -245,17 +189,38 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 		if (project_loaded) {
 			SceneTree::flush_delete_queue();
 			_render_edit_view();
-			if (game.is_running() && game_target.is_valid()) {
-				rs->set_render_target(game_target);
-				game.draw();
+			if (RenderingServer3D *rs3d = RenderingServer3D::get_singleton()) {
+				monitor_draw_calls_3d = view_3d ? rs3d->get_stat_draw_calls() : 0;
+				monitor_triangles = view_3d ? rs3d->get_stat_triangles() : 0;
 			}
+			if (game.is_running()) {
+				// Le jeu est rendu à la taille réelle de son image dans le dock, pas à la
+				// résolution du projet puis étiré : texte et 3D restent nets.
+				const float game_scale = _update_game_target();
+				if (game_target.is_valid()) {
+					RenderingServer3D *rs3d = RenderingServer3D::get_singleton();
+					if (rs3d) {
+						rs3d->reset_stats();
+					}
+					const uint64_t start = os->get_ticks_usec();
+					rs->set_render_target(game_target, game_scale);
+					game.draw();
+					game_draw_usec = os->get_ticks_usec() - start;
+					// Quand le jeu tourne, les mesures 3D sont les siennes.
+					monitor_draw_calls_3d = rs3d ? rs3d->get_stat_draw_calls() : 0;
+					monitor_triangles = rs3d ? rs3d->get_stat_triangles() : 0;
+				}
+			}
+			monitor_items_2d = rs->get_stat_items();
+			_render_previews();
+			_monitor_sample(frame_delta * 1000000.0, (double)game_process_usec, (double)game_draw_usec);
 		}
 		rs->set_render_target(RID());
 
 		ImGui::Render();
 		ImGuiIO &io = ImGui::GetIO();
 		SDL_RenderSetScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
-		SDL_SetRenderDrawColor(renderer, 18, 19, 37, 255);
+		SDL_SetRenderDrawColor(renderer, (Uint8)(palette.bg_dark.r * 255.0f), (Uint8)(palette.bg_dark.g * 255.0f), (Uint8)(palette.bg_dark.b * 255.0f), 255);
 		SDL_RenderClear(renderer);
 		ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
 
@@ -291,6 +256,8 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 
 	// --- Arrêt ---
 	game.stop();
+	_clear_previews();
+	pm_projects.clear(); // les icônes des projets sont des textures
 	if (scene_root) {
 		memdelete(scene_root);
 		scene_root = nullptr;
@@ -564,7 +531,7 @@ void EditorNode::_draw_brand_header(float p_logo_size) {
 	if (logo.is_valid()) {
 		ImTextureID id = (ImTextureID)(intptr_t)RenderingServer::get_singleton()->texture_get_native(logo->get_rid());
 		ImGui::GetWindowDrawList()->AddImage(id, start, ImVec2(start.x + p_logo_size, start.y + p_logo_size));
-		text_x += p_logo_size + 14.0f;
+		text_x += p_logo_size + ES(14);
 	}
 	const float word_size = p_logo_size * 0.56f;
 	const float line_gap = 2.0f;
@@ -572,10 +539,10 @@ void EditorNode::_draw_brand_header(float p_logo_size) {
 	ImGui::SetCursorScreenPos(ImVec2(text_x, start.y + (p_logo_size - block_height) * 0.5f));
 	ImGui::BeginGroup();
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, line_gap));
-	ImGui::PushFont(nullptr, word_size);
+	ImGui::PushFont(nullptr, word_size / EditorUI::scale); // PushFont attend une taille avant mise à l'échelle
 	ImGui::TextUnformatted("ME");
 	ImGui::SameLine(0, 0);
-	ImGui::TextColored(ImVec4(1.0f, 0.478f, 0.0f, 1.0f), "X");
+	ImGui::TextColored(ImVec4(1.0f, 0.478f, 0.0f, 1.0f), "X"); // Orange MEX, quel que soit le thème
 	ImGui::PopFont();
 	ImGui::TextDisabled("Metoushela Engine X  ·  version %s", MEX_VERSION);
 	ImGui::PopStyleVar();
@@ -611,6 +578,7 @@ void EditorNode::_draw_ui() {
 	_draw_filesystem_dock();
 	_draw_inspector_dock();
 	_draw_console_dock();
+	_draw_monitor_dock();
 	_draw_animation_dock();
 	_draw_script_dock();
 	_draw_game_dock();
@@ -628,15 +596,16 @@ void EditorNode::_build_default_layout(unsigned int p_dockspace_id) {
 	ImGuiID right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.27f, nullptr, &center);
 	ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.30f, nullptr, &center);
 	ImGuiID left_bottom = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.42f, nullptr, &left);
-	ImGui::DockBuilderDockWindow("Scène###SceneDock", left);
-	ImGui::DockBuilderDockWindow("Fichiers###FilesDock", left_bottom);
-	ImGui::DockBuilderDockWindow("Inspecteur###Inspector", right);
+	ImGui::DockBuilderDockWindow(ICON_DOCK_SCENE "  Scène###SceneDock", left);
+	ImGui::DockBuilderDockWindow(ICON_DOCK_FILES "  Fichiers###FilesDock", left_bottom);
+	ImGui::DockBuilderDockWindow(ICON_DOCK_INSPECTOR "  Inspecteur###Inspector", right);
 	// Le dernier onglet ancré est celui affiché au départ : la sortie.
-	ImGui::DockBuilderDockWindow("Animation###Animation", bottom);
-	ImGui::DockBuilderDockWindow("Sortie###Console", bottom);
-	ImGui::DockBuilderDockWindow("Vue 2D###Viewport", center);
-	ImGui::DockBuilderDockWindow("Jeu###Game", center);
-	ImGui::DockBuilderDockWindow("Script###Script", center);
+	ImGui::DockBuilderDockWindow(ICON_DOCK_ANIMATION "  Animation###Animation", bottom);
+	ImGui::DockBuilderDockWindow(ICON_SIGNAL "  Moniteur###Monitor", bottom);
+	ImGui::DockBuilderDockWindow(ICON_DOCK_OUTPUT "  Sortie###Console", bottom);
+	ImGui::DockBuilderDockWindow(ICON_VIEW_2D "  Vue 2D###Viewport", center);
+	ImGui::DockBuilderDockWindow(ICON_DOCK_GAME "  Jeu###Game", center);
+	ImGui::DockBuilderDockWindow(ICON_DOCK_SCRIPT "  Script###Script", center);
 	ImGui::DockBuilderFinish(p_dockspace_id);
 	focus_console_frames = 3;
 	focus_viewport = true;
@@ -669,72 +638,108 @@ void EditorNode::_handle_shortcuts() {
 	}
 }
 
+void EditorNode::_switch_workspace(int p_workspace) {
+	switch (p_workspace) {
+		case WORKSPACE_2D:
+		case WORKSPACE_3D:
+			view_3d = p_workspace == WORKSPACE_3D;
+			drag = DRAG_NONE;
+			drag3d = DRAG3D_NONE;
+			focus_viewport = true;
+			break;
+		case WORKSPACE_SCRIPT:
+			focus_script = true;
+			break;
+		case WORKSPACE_GAME:
+			focus_game = true;
+			break;
+	}
+}
+
 void EditorNode::_draw_main_menu() {
+	// Barre plus haute que les menus d'ImGui par défaut : elle porte aussi le choix de
+	// l'espace de travail et les commandes de lecture.
+	const float padding_x = ImGui::GetStyle().FramePadding.x;
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding_x, ES(10)));
 	if (!ImGui::BeginMainMenuBar()) {
+		ImGui::PopStyleVar();
 		return;
 	}
+	if (logo.is_valid()) {
+		const float bar_h = ImGui::GetWindowHeight();
+		const float size = bar_h - ES(12);
+		const ImVec2 origin = ImGui::GetWindowPos();
+		const ImVec2 pos(origin.x + ES(10), origin.y + (bar_h - size) * 0.5f);
+		ImTextureID id = (ImTextureID)(intptr_t)RenderingServer::get_singleton()->texture_get_native(logo->get_rid());
+		ImGui::GetWindowDrawList()->AddImage(id, pos, ImVec2(pos.x + size, pos.y + size));
+		ImGui::SetCursorPosX(ES(10) + size + ES(8));
+	}
 	if (ImGui::BeginMenu("Fichier")) {
-		if (ImGui::MenuItem("Nouvelle scène")) {
+		if (ImGui::MenuItem(ICON_FILE_PLUS "  Nouvelle scène")) {
 			_check_unsaved_then([this]() { _new_scene(); });
 		}
-		if (ImGui::MenuItem("Ouvrir une scène...")) {
+		if (ImGui::MenuItem(ICON_FOLDER_OPEN "  Ouvrir une scène...")) {
 			_check_unsaved_then([this]() {
 				_open_file_dialog("Ouvrir une scène", { "scn" }, false, [this](const String &p_path) { _open_scene(p_path); });
 			});
 		}
 		ImGui::Separator();
-		if (ImGui::MenuItem("Enregistrer la scène", "Ctrl+S", false, scene_root != nullptr)) {
+		if (ImGui::MenuItem(ICON_SAVE "  Enregistrer la scène", "Ctrl+S", false, scene_root != nullptr)) {
 			_save_scene_or_ask();
 		}
-		if (ImGui::MenuItem("Enregistrer la scène sous...", nullptr, false, scene_root != nullptr)) {
+		if (ImGui::MenuItem(ICON_SAVE "  Enregistrer la scène sous...", nullptr, false, scene_root != nullptr)) {
 			_open_file_dialog("Enregistrer la scène sous", { "scn" }, true, [this](const String &p_path) { _save_scene(p_path); }, scene_path);
 		}
 		ImGui::Separator();
-		if (ImGui::MenuItem("Quitter")) {
+		if (ImGui::MenuItem(ICON_CLOSE "  Quitter")) {
 			_request_quit();
 		}
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Édition")) {
-		if (ImGui::MenuItem("Annuler", "Ctrl+Z", false, !undo_stack.empty() || action_dirty)) {
+		if (ImGui::MenuItem(ICON_UNDO "  Annuler", "Ctrl+Z", false, !undo_stack.empty() || action_dirty)) {
 			_defer([this]() { _undo(); });
 		}
-		if (ImGui::MenuItem("Rétablir", "Ctrl+Y", false, !redo_stack.empty())) {
+		if (ImGui::MenuItem(ICON_REDO "  Rétablir", "Ctrl+Y", false, !redo_stack.empty())) {
 			_defer([this]() { _redo(); });
 		}
 		ImGui::Separator();
 		Node *selected = _get_selected();
-		if (ImGui::MenuItem("Dupliquer le nœud", "Ctrl+D", false, selected && selected != scene_root)) {
+		if (ImGui::MenuItem(ICON_COPY "  Dupliquer le nœud", "Ctrl+D", false, selected && selected != scene_root)) {
 			_defer([this, selected]() { _duplicate_node(selected); });
 		}
-		if (ImGui::MenuItem("Supprimer le nœud", "Suppr", false, selected != nullptr)) {
+		if (ImGui::MenuItem(ICON_TRASH "  Supprimer le nœud", "Suppr", false, selected != nullptr)) {
 			_defer([this, selected]() { _delete_node(selected); });
 		}
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Projet")) {
-		if (ImGui::MenuItem("Paramètres du projet...")) {
+		if (ImGui::MenuItem(ICON_SETTINGS "  Paramètres du projet...")) {
 			settings_open = true;
 		}
-		if (ImGui::MenuItem("Définir la scène courante comme scène principale", nullptr, false, !scene_path.empty())) {
+		if (ImGui::MenuItem(ICON_STAR "  Définir la scène courante comme scène principale", nullptr, false, !scene_path.empty())) {
 			ProjectSettings::get_singleton()->set_setting("application/main_scene", Variant(scene_path));
 			ProjectSettings::get_singleton()->save();
 			print_line("Scène principale : " + scene_path);
 		}
-		if (ImGui::MenuItem("Exporter le jeu...")) {
+		if (ImGui::MenuItem(ICON_PACKAGE "  Exporter le jeu...")) {
 			export_open = true;
 			export_message.clear();
 		}
 		ImGui::Separator();
-		if (ImGui::MenuItem("Actualiser les fichiers")) {
+		if (ImGui::MenuItem(ICON_REFRESH "  Actualiser les fichiers")) {
 			fs_dirty = true;
+		}
+		ImGui::Separator();
+		if (ImGui::MenuItem(ICON_HOME "  Retourner à la liste des projets")) {
+			_check_unsaved_then([this]() { _defer([this]() { _close_project(); }); });
 		}
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Affichage")) {
-		ImGui::MenuItem("Grille", nullptr, &show_grid);
-		ImGui::MenuItem("Aimanter à la grille", nullptr, &snap_enabled);
-		if (ImGui::MenuItem("Formes de collision", nullptr, &show_collision_shapes)) {
+		ImGui::MenuItem(ICON_GRID "  Grille", nullptr, &show_grid);
+		ImGui::MenuItem(ICON_MAGNET "  Aimanter à la grille", nullptr, &snap_enabled);
+		if (ImGui::MenuItem(ICON_NODE_SHAPE "  Formes de collision", nullptr, &show_collision_shapes)) {
 			if (edit_tree) {
 				edit_tree->set_debug_collisions_hint(show_collision_shapes);
 				if (scene_root) {
@@ -743,16 +748,53 @@ void EditorNode::_draw_main_menu() {
 			}
 		}
 		ImGui::Separator();
-		if (ImGui::MenuItem("Recentrer la vue", "F")) {
+		if (ImGui::MenuItem(ICON_FOCUS "  Recentrer la vue", "F")) {
 			_focus_selection();
 		}
-		if (ImGui::MenuItem("Réinitialiser la disposition")) {
+		ImGui::Separator();
+		if (ImGui::MenuItem(ICON_SIGNAL "  Moniteur de performances")) {
+			ImGui::SetWindowFocus("###Monitor");
+		}
+		if (ImGui::MenuItem(ICON_DOCK_OUTPUT "  Sortie")) {
+			ImGui::SetWindowFocus("###Console");
+		}
+		ImGui::EndMenu();
+	}
+	if (ImGui::BeginMenu("Éditeur")) {
+		if (ImGui::MenuItem(ICON_SETTINGS "  Préférences...")) {
+			prefs_open = true;
+		}
+		if (ImGui::BeginMenu(ICON_PALETTE "  Thème")) {
+			for (const String &name : _get_theme_names()) {
+				if (ImGui::MenuItem(name.c_str(), nullptr, pref_theme == name)) {
+					pref_theme = name;
+					style_dirty = true;
+					_save_prefs();
+				}
+			}
+			ImGui::EndMenu();
+		}
+		if (ImGui::BeginMenu(ICON_MONITOR "  Échelle de l'interface")) {
+			const float automatic = _get_auto_ui_scale();
+			const float scales[] = { 0.0f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f };
+			for (float value : scales) {
+				const String label = value <= 0.0f ? vformat("Automatique (%d %%)", (int)std::lround(automatic * 100.0f)) : vformat("%d %%", (int)std::lround(value * 100.0f));
+				if (ImGui::MenuItem(label.c_str(), nullptr, std::abs(value - pref_ui_scale) < 0.01f)) {
+					pref_ui_scale = value;
+					style_dirty = true;
+					_save_prefs();
+				}
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::Separator();
+		if (ImGui::MenuItem(ICON_LAYOUT "  Réinitialiser la disposition")) {
 			_defer([this]() { layout_built = false; ImGui::DockBuilderRemoveNode(ImGui::GetID("MexDockSpace")); });
 		}
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Aide")) {
-		if (ImGui::MenuItem("À propos de MEX")) {
+		if (ImGui::MenuItem(ICON_INFO "  À propos de MEX")) {
 			about_open = true;
 		}
 		ImGui::EndMenu();
@@ -760,180 +802,120 @@ void EditorNode::_draw_main_menu() {
 
 	_draw_toolbar();
 	ImGui::EndMainMenuBar();
+	ImGui::PopStyleVar();
 }
 
+// Dans la barre de menus : au centre, le choix de l'espace de travail (2D, 3D, Script, Jeu) ;
+// à droite, les commandes de lecture.
 void EditorNode::_draw_toolbar() {
+	using EditorUI::col;
+	using EditorUI::u32;
 	const bool playing = game.is_running();
-	const ImGuiStyle &style = ImGui::GetStyle();
-	const char *labels[4] = { "Jouer (F5)", "Jouer la scène (F6)", playing && game_paused ? "Reprendre" : "Pause", "Arrêter (F8)" };
-	float width = 0;
-	for (const char *label : labels) {
-		width += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2 + style.ItemSpacing.x;
-	}
-	const float start = (ImGui::GetWindowWidth() - width) * 0.5f;
-	if (start > ImGui::GetCursorPosX() + 20) {
-		ImGui::SetCursorPosX(start);
-	} else {
-		ImGui::Separator();
-	}
+	const float bar_h = ImGui::GetWindowHeight();
+	const float bar_w = ImGui::GetWindowWidth();
+	const float menus_end = ImGui::GetCursorPosX();
+	const float button_h = bar_h - ES(10);
+	const float y = (bar_h - button_h) * 0.5f;
+	const float rounding = ImGui::GetStyle().FrameRounding;
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	const ImVec2 origin = ImGui::GetWindowPos();
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ES(12), (button_h - ImGui::GetFontSize()) * 0.5f));
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ES(2), 0));
 
-	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.42f, 0.25f, 1.0f));
-	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.52f, 0.31f, 1.0f));
-	if (ImGui::Button(labels[0])) {
-		_defer([this]() { _play_main(); });
-	}
-	ImGui::PopStyleColor(2);
-	if (ImGui::Button(labels[1])) {
-		_defer([this]() { _play_current(); });
-	}
-	ImGui::BeginDisabled(!playing);
-	if (ImGui::Button(labels[2])) {
-		game_paused = !game_paused;
-	}
-	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.50f, 0.20f, 0.20f, 1.0f));
-	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.62f, 0.25f, 0.25f, 1.0f));
-	if (ImGui::Button(labels[3])) {
-		_defer([this]() { _stop(); });
-	}
-	ImGui::PopStyleColor(2);
-	ImGui::EndDisabled();
+	// --- Commandes de lecture (à droite) ---
+	struct PlayButton {
+		const char *label;
+		const char *tip;
+		Color color;
+		bool enabled;
+	};
+	const PlayButton play_buttons[4] = {
+		{ ICON_PLAY "##play", "Lancer le projet (F5)", palette.success, true },
+		{ ICON_PLAY_SCENE "##play_scene", "Lancer la scène ouverte (F6)", palette.info, true },
+		{ ICON_PAUSE "##pause", playing && game_paused ? "Reprendre" : "Mettre en pause", palette.warning, playing },
+		{ ICON_STOP "##stop", "Arrêter le jeu (F8)", palette.error, playing },
+	};
+	const float icon_w = button_h + ES(8);
+	const float play_w = icon_w * 4 + ES(2) * 3 + ES(8);
+	const float play_x = bar_w - play_w - ES(8);
 
-	// Indicateur à droite.
-	const String info = vformat("%.0f i/s", ImGui::GetIO().Framerate);
-	const float info_width = ImGui::CalcTextSize(info.c_str()).x + 12;
-	if (ImGui::GetWindowWidth() - info_width > ImGui::GetCursorPosX()) {
-		ImGui::SetCursorPosX(ImGui::GetWindowWidth() - info_width);
-		ImGui::TextDisabled("%s", info.c_str());
+	// --- Espaces de travail (au centre) ---
+	const char *workspaces[WORKSPACE_COUNT] = { ICON_VIEW_2D "  2D", ICON_VIEW_3D "  3D", ICON_DOCK_SCRIPT "  Script", ICON_DOCK_GAME "  Jeu" };
+	const char *workspace_tips[WORKSPACE_COUNT] = { "Vue 2D : canvas, sprites, interface", "Vue 3D : maillages, lumières, caméras", "Éditeur de script", "Le jeu en cours d'exécution" };
+	float workspaces_w = ES(2) * (WORKSPACE_COUNT - 1);
+	for (const char *label : workspaces) {
+		workspaces_w += ImGui::CalcTextSize(label, nullptr, true).x + ES(12) * 2;
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Gestionnaire de projets
-// ---------------------------------------------------------------------------
-static bool _is_project_dir(const String &p_dir) {
-	return FileAccess::exists(path_join(p_dir, ProjectSettings::PROJECT_FILE));
-}
-
-void EditorNode::_draw_project_manager() {
-	if (!pm_scanned) {
-		pm_scanned = true;
-		std::vector<String> roots = { ".", "projects", "../projects", "../../projects" };
-		if (char *base = SDL_GetBasePath()) {
-			roots.push_back(path_join(base, "projects"));
-			roots.push_back(path_join(base, "../projects"));
-			roots.push_back(path_join(base, "../../projects"));
-			SDL_free(base);
+	float workspaces_x = std::floor((bar_w - workspaces_w) * 0.5f);
+	workspaces_x = std::max(workspaces_x, menus_end + ES(16));
+	if (workspaces_x + workspaces_w < play_x - ES(8)) {
+		// Dans une barre de menus, SameLine() ramène à la hauteur de la ligne des menus : chaque
+		// élément est donc placé explicitement.
+		float x = workspaces_x;
+		for (int i = 0; i < WORKSPACE_COUNT; i++) {
+			ImGui::SetCursorPos(ImVec2(x, y));
+			const bool active = workspace_active == i;
+			ImGui::PushStyleColor(ImGuiCol_Button, active ? col(palette.accent, 0.18f) : ImVec4(0, 0, 0, 0));
+			ImGui::PushStyleColor(ImGuiCol_Text, col(active ? palette.accent : palette.text));
+			if (ImGui::Button(workspaces[i])) {
+				_switch_workspace(i);
+			}
+			ImGui::PopStyleColor(2);
+			ImGui::SetItemTooltip("%s", workspace_tips[i]);
+			x += ImGui::GetItemRectSize().x + ES(2);
 		}
-		std::set<String> seen;
-		for (const String &root : roots) {
-			if (!FileAccess::dir_exists(root)) {
-				continue;
+	}
+
+	if (play_x > menus_end + ES(8)) {
+		// Images par seconde, à gauche des commandes.
+		const String info = vformat("%.0f i/s", ImGui::GetIO().Framerate);
+		const float info_w = ImGui::CalcTextSize(info.c_str()).x;
+		if (play_x - info_w - ES(14) > std::max(menus_end, workspaces_x + workspaces_w) + ES(8)) {
+			dl->AddText(ImVec2(origin.x + play_x - info_w - ES(14), origin.y + (bar_h - ImGui::GetFontSize()) * 0.5f), u32(palette.text_dim), info.c_str());
+		}
+		// Fond commun aux quatre boutons.
+		dl->AddRectFilled(ImVec2(origin.x + play_x, origin.y + y), ImVec2(origin.x + play_x + play_w, origin.y + y + button_h), u32(palette.frame), rounding);
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+		for (int i = 0; i < 4; i++) {
+			const PlayButton &button = play_buttons[i];
+			ImGui::SetCursorPos(ImVec2(play_x + ES(4) + (float)i * (icon_w + ES(2)), y));
+			ImGui::BeginDisabled(!button.enabled);
+			const bool highlighted = (i == 2 && playing && game_paused);
+			ImGui::PushStyleColor(ImGuiCol_Text, col(button.color));
+			if (highlighted) {
+				ImGui::PushStyleColor(ImGuiCol_Button, col(button.color, 0.22f));
 			}
-			std::vector<String> candidates = { root };
-			std::vector<String> dirs;
-			FileAccess::list_dir(root, nullptr, &dirs);
-			for (const String &d : dirs) {
-				candidates.push_back(path_join(root, d));
-			}
-			for (const String &candidate : candidates) {
-				if (!_is_project_dir(candidate)) {
-					continue;
+			if (ImGui::Button(button.label, ImVec2(icon_w, button_h))) {
+				switch (i) {
+					case 0:
+						_defer([this]() { _play_main(); });
+						break;
+					case 1:
+						_defer([this]() { _play_current(); });
+						break;
+					case 2:
+						game_paused = !game_paused;
+						if (game_paused) {
+							Input::get_singleton()->release_all();
+						}
+						break;
+					default:
+						_defer([this]() { _stop(); });
+						break;
 				}
-				const String simple = path_simplify(candidate);
-				if (seen.insert(path_get_file(simple) + "|" + FileAccess::get_file_as_string(path_join(candidate, ProjectSettings::PROJECT_FILE))).second) {
-					pm_found.push_back(simple);
-				}
 			}
-			if (pm_new_parent.empty() && path_get_file(path_simplify(root)) == "projects") {
-				pm_new_parent = path_simplify(root);
-			}
+			ImGui::PopStyleColor(highlighted ? 2 : 1);
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("%s", button.tip);
 		}
-		if (pm_new_parent.empty()) {
-			pm_new_parent = "projects";
-		}
-	}
-
-	const ImGuiViewport *viewport = ImGui::GetMainViewport();
-	ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(640, 0));
-	ImGui::Begin("Gestionnaire de projets###ProjectManager", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-	_draw_brand_header(64.0f);
-
-	ImGui::SeparatorText("Projets trouvés");
-	if (pm_found.empty()) {
-		ImGui::TextDisabled("Aucun projet trouvé à proximité.");
-	}
-	for (const String &path : pm_found) {
-		ImGui::PushID(path.c_str());
-		if (ImGui::Button("Ouvrir")) {
-			const String target = path;
-			_defer([this, target]() { _open_project(target); });
-		}
-		ImGui::SameLine();
-		ImGui::TextUnformatted(path.c_str());
-		ImGui::PopID();
-	}
-
-	ImGui::SeparatorText("Ouvrir un projet existant");
-	ImGui::SetNextItemWidth(-110);
-	ImGui::InputTextWithHint("##open_path", "Dossier contenant project.mex", &pm_open_path);
-	ImGui::SameLine();
-	if (ImGui::Button("Ouvrir##path", ImVec2(-FLT_MIN, 0))) {
-		const String target = pm_open_path;
-		_defer([this, target]() { _open_project(target); });
-	}
-
-	ImGui::SeparatorText("Créer un nouveau projet");
-	ImGui::InputText("Nom", &pm_new_name);
-	ImGui::InputText("Dossier parent", &pm_new_parent);
-	if (ImGui::Button("Créer et ouvrir")) {
-		_defer([this]() {
-			const String name = str_strip(pm_new_name);
-			if (name.empty()) {
-				pm_error = "Le nom du projet est vide.";
-				return;
-			}
-			const String dir = path_join(pm_new_parent, name);
-			if (_is_project_dir(dir)) {
-				pm_error = "Un projet existe déjà dans : " + dir;
-				return;
-			}
-			if (FileAccess::make_dir_recursive(dir) != OK) {
-				pm_error = "Impossible de créer le dossier : " + dir;
-				return;
-			}
-			const String content = "[application]\n\nname = \"" + str_c_escape(name) + "\"\n";
-			if (FileAccess::write_string(path_join(dir, ProjectSettings::PROJECT_FILE), content) != OK) {
-				pm_error = "Impossible d'écrire le fichier du projet dans : " + dir;
-				return;
-			}
-			_open_project(dir);
-		});
-	}
-	if (!pm_error.empty()) {
-		ImGui::Spacing();
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.45f, 1.0f));
-		ImGui::TextWrapped("%s", pm_error.c_str());
 		ImGui::PopStyleColor();
 	}
-	ImGui::End();
+	ImGui::PopStyleVar(2);
 }
 
-bool EditorNode::_open_project(const String &p_path) {
-	if (p_path.empty() || !_is_project_dir(p_path)) {
-		pm_error = "Aucun fichier " + String(ProjectSettings::PROJECT_FILE) + " dans : " + p_path;
-		return false;
-	}
-	if (ProjectSettings::get_singleton()->setup(p_path) != OK) {
-		pm_error = "Impossible de charger le projet : " + p_path;
-		return false;
-	}
-	pm_error.clear();
-	project_loaded = true;
-	_project_opened();
-	return true;
-}
-
+// ---------------------------------------------------------------------------
+// Projet
+// ---------------------------------------------------------------------------
 void EditorNode::_apply_project_settings() {
 	const String filter = GLOBAL_GET("rendering/texture_filter").as_string();
 	RenderingServer::get_singleton()->set_default_texture_filter(filter == "nearest" ? RenderingServer::TEXTURE_FILTER_NEAREST : RenderingServer::TEXTURE_FILTER_LINEAR);
@@ -956,6 +938,49 @@ void EditorNode::_project_opened() {
 		_new_scene();
 	}
 	_update_window_title();
+
+	// Le projet rejoint la liste du gestionnaire de projets, avec sa date d'ouverture.
+	if (!pm_scanned) {
+		pm_scanned = true;
+		_pm_load_list();
+	}
+	if (ProjectEntry *entry = _pm_add(ProjectSettings::get_singleton()->get_resource_path())) {
+		entry->last_opened = (int64_t)std::time(nullptr);
+		pm_selected = entry->path;
+		_pm_save_list();
+	}
+	view_autofit = true;
+	view_autofit_frames = 6;
+	view_mode_reference = 0;
+	if (pm_play_after_open) {
+		pm_play_after_open = false;
+		_defer([this]() { _play_main(); });
+	}
+}
+
+// Ferme le projet et revient au gestionnaire de projets.
+void EditorNode::_close_project() {
+	_stop();
+	_anim_end_preview();
+	if (script_dirty) {
+		_save_script();
+	}
+	_set_scene_root(nullptr, "");
+	script_path.clear();
+	script_text.clear();
+	script_dirty = false;
+	script_error.clear();
+	text_edit_buffers.clear();
+	console_lines.clear();
+	_clear_previews();
+	fs_root = FsEntry();
+	fs_files.clear();
+	fs_dirty = true;
+	fs_selected.clear();
+	fs_current_dir = "res://";
+	project_loaded = false;
+	pm_scanned = false; // la liste est relue : noms et icônes ont pu changer
+	pm_error.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -1358,15 +1383,10 @@ void EditorNode::_play(const String &p_scene) {
 	if (scene_root && scene_modified && !scene_path.empty()) {
 		_save_scene(scene_path);
 	}
-	RenderingServer *rs = RenderingServer::get_singleton();
 	const Size2 size((real_t)GLOBAL_GET("display/width").as_int(), (real_t)GLOBAL_GET("display/height").as_int());
-	if (!game_target.is_valid() || game_size != size) {
-		if (game_target.is_valid()) {
-			rs->free_rid(game_target);
-		}
-		game_target = rs->texture_create_target((int)size.x, (int)size.y);
-		game_size = size;
-	}
+	game_size = size;
+	game_image_size = Size2(); // inconnue tant que le dock « Jeu » n'a pas été dessiné
+	_update_game_target();
 	_apply_project_settings();
 	InputMap::get_singleton()->load_from_project_settings();
 	print_line("--- Lancement de " + p_scene + " ---");
@@ -1378,6 +1398,33 @@ void EditorNode::_play(const String &p_scene) {
 	}
 	game_paused = false;
 	focus_game = true;
+}
+
+// Ajuste la cible de rendu du jeu à la taille réelle de son image à l'écran (en pixels) et
+// renvoie l'échelle à appliquer au rendu.
+float EditorNode::_update_game_target() {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (game_size.x <= 0 || game_size.y <= 0) {
+		return 1.0f;
+	}
+	Size2 wanted = game_size;
+	if (game_image_size.x >= 8 && game_image_size.y >= 8) {
+		wanted = Size2(std::round(game_image_size.x * pixel_ratio), std::round(game_image_size.y * pixel_ratio));
+	}
+	wanted.x = std::clamp(wanted.x, 16.0f, 8192.0f);
+	wanted.y = std::clamp(wanted.y, 16.0f, 8192.0f);
+	if (!game_target.is_valid() || game_target_size != wanted) {
+		if (game_target.is_valid()) {
+			rs->free_rid(game_target);
+		}
+		game_target = rs->texture_create_target((int)wanted.x, (int)wanted.y);
+		game_target_size = wanted;
+	}
+	const float scale = std::min(wanted.x / game_size.x, wanted.y / game_size.y);
+	if (game.get_tree()) {
+		game.get_tree()->set_render_scale(scale);
+	}
+	return scale;
 }
 
 void EditorNode::_play_main() {

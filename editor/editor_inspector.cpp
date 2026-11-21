@@ -9,6 +9,8 @@
 #include "scene/main/node.h"
 #include "scene/resources/packed_scene.h"
 
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "misc/cpp/imgui_stdlib.h"
@@ -55,7 +57,7 @@ struct Section {
 // Dock
 // ---------------------------------------------------------------------------
 void EditorNode::_draw_inspector_dock() {
-	if (!ImGui::Begin("Inspecteur###Inspector")) {
+	if (!ImGui::Begin(ICON_DOCK_INSPECTOR "  Inspecteur###Inspector")) {
 		ImGui::End();
 		return;
 	}
@@ -176,7 +178,7 @@ void EditorNode::_draw_object_properties(Object *p_object, bool p_is_node) {
 			ImGui::AlignTextToFramePadding();
 			const String label = str_capitalize(pi.name);
 			if (is_modified) {
-				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.78f, 1.0f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_Text, EditorUI::col(palette.info));
 			}
 			{
 				// Le libellé est coupé à la largeur de sa colonne (le nom complet est dans l'infobulle).
@@ -310,7 +312,7 @@ bool EditorNode::_edit_property(Object *p_object, const PropertyInfo &p_info, Va
 			}
 			if (p_info.hint == PROPERTY_HINT_FILE) {
 				bool changed = false;
-				ImGui::SetNextItemWidth(-36);
+				ImGui::SetNextItemWidth(ES(-36));
 				if (ImGui::InputText("##v", &v)) {
 					r_value = Variant(v);
 					changed = true;
@@ -554,12 +556,13 @@ bool EditorNode::_edit_resource(Object *p_object, const PropertyInfo &p_info, Va
 	// Ressource intégrée à la scène : ses propriétés sont éditables sur place.
 	if (resource.is_valid() && !is_script && !changed) {
 		const bool builtin = resource->get_path().empty();
-		ImGui::Indent(10);
+		ImGui::Indent(ES(10));
 		if (ImGui::TreeNodeEx("##sub", ImGuiTreeNodeFlags_SpanAvailWidth | (builtin ? ImGuiTreeNodeFlags_DefaultOpen : 0), "%s%s", resource->get_class().c_str(), builtin ? "" : " (fichier partagé)")) {
+			_draw_resource_preview(resource);
 			_draw_object_properties(resource.ptr(), false);
 			ImGui::TreePop();
 		}
-		ImGui::Unindent(10);
+		ImGui::Unindent(ES(10));
 	}
 	return changed;
 }
@@ -590,7 +593,7 @@ void EditorNode::_draw_node_signals(Node *p_node) {
 
 		ImGui::PushID(signal.name.c_str());
 		ImGui::AlignTextToFramePadding();
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.62f, 0.50f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Text, EditorUI::col(palette.error));
 		ImGui::Text("%s(%s)", signal.name.c_str(), arguments.c_str());
 		ImGui::PopStyleColor();
 		ImGui::SameLine();
@@ -613,7 +616,7 @@ void EditorNode::_draw_node_signals(Node *p_node) {
 			}
 			ImGui::PushID(index++);
 			const String path = target == scene_root ? String(".") : scene_root->get_path_to(target);
-			ImGui::Indent(14);
+			ImGui::Indent(ES(14));
 			if (ImGui::SmallButton("x")) {
 				const Callable callable = c.callable;
 				const String signal_name = signal.name;
@@ -627,7 +630,7 @@ void EditorNode::_draw_node_signals(Node *p_node) {
 			ImGui::SetItemTooltip("Déconnecter");
 			ImGui::SameLine();
 			ImGui::Text("-> %s :: %s()", path.c_str(), c.callable.method.c_str());
-			ImGui::Unindent(14);
+			ImGui::Unindent(ES(14));
 			ImGui::PopID();
 		}
 		ImGui::PopID();
@@ -664,7 +667,7 @@ void EditorNode::_draw_connect_dialog() {
 
 	std::vector<String> paths;
 	_collect_node_paths(scene_root, scene_root, paths);
-	ImGui::SetNextItemWidth(360);
+	ImGui::SetNextItemWidth(ES(360));
 	if (ImGui::BeginCombo("Nœud cible", connect_dialog.target_path == "." ? (scene_root->get_name() + " (racine)").c_str() : connect_dialog.target_path.c_str())) {
 		for (const String &path : paths) {
 			const String text = path == "." ? scene_root->get_name() + " (racine)" : path;
@@ -674,7 +677,7 @@ void EditorNode::_draw_connect_dialog() {
 		}
 		ImGui::EndCombo();
 	}
-	ImGui::SetNextItemWidth(360);
+	ImGui::SetNextItemWidth(ES(360));
 	ImGui::InputText("Méthode", &connect_dialog.method);
 
 	Node *target = connect_dialog.target_path == "." ? scene_root : scene_root->get_node_or_null(connect_dialog.target_path);
@@ -686,7 +689,7 @@ void EditorNode::_draw_connect_dialog() {
 	const bool method_valid = str_is_valid_identifier(method);
 	const bool needs_stub = target && target_script.is_valid() && method_valid && !target_script->has_method(method) && !ClassDB::get_method(ClassDB::get_class_info(target->get_class()), method);
 	if (target && target_script.is_null() && method_valid && !ClassDB::get_method(ClassDB::get_class_info(target->get_class()), method)) {
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.83f, 0.40f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Text, EditorUI::col(palette.warning));
 		ImGui::TextWrapped("Le nœud cible n'a pas de script : attachez-en un contenant cette méthode.");
 		ImGui::PopStyleColor();
 	} else if (needs_stub) {
@@ -695,7 +698,7 @@ void EditorNode::_draw_connect_dialog() {
 	ImGui::Spacing();
 
 	ImGui::BeginDisabled(!target || !method_valid);
-	if (ImGui::Button("Connecter", ImVec2(150, 0))) {
+	if (ImGui::Button("Connecter", ImVec2(ES(150), 0))) {
 		const ObjectID source_id = connect_dialog.source_id;
 		const ObjectID target_id = target->get_instance_id();
 		const String signal = connect_dialog.signal;
@@ -735,7 +738,7 @@ void EditorNode::_draw_connect_dialog() {
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
-	if (ImGui::Button("Annuler", ImVec2(120, 0))) {
+	if (ImGui::Button("Annuler", ImVec2(ES(120), 0))) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();
@@ -748,7 +751,7 @@ void EditorNode::_draw_node_groups(Node *p_node) {
 	const ObjectID id = p_node->get_instance_id();
 	ImGui::TextDisabled("Les groupes servent à retrouver des nœuds :\nget_tree().get_nodes_in_group(\"ennemis\")");
 	ImGui::Spacing();
-	ImGui::SetNextItemWidth(-90);
+	ImGui::SetNextItemWidth(ES(-90));
 	const bool entered = ImGui::InputTextWithHint("##group", "Nom du groupe", &group_buffer, ImGuiInputTextFlags_EnterReturnsTrue);
 	ImGui::SameLine();
 	if (ImGui::Button("Ajouter", ImVec2(-FLT_MIN, 0)) || entered) {

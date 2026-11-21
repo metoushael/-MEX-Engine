@@ -343,8 +343,12 @@ void RenderingServer::free_rid(RID p_rid) {
 // ---------------------------------------------------------------------------
 // Rendu
 // ---------------------------------------------------------------------------
-void RenderingServer::set_render_target(RID p_texture) {
+void RenderingServer::set_render_target(RID p_texture, float p_scale) {
 	SDL_SetRenderTarget(renderer, p_texture.is_valid() ? texture_get_native(p_texture) : nullptr);
+	if (p_texture.is_valid()) {
+		// L'échelle est propre à chaque cible : SDL la remet à 1 en changeant de cible.
+		SDL_RenderSetScale(renderer, p_scale, p_scale);
+	}
 }
 
 static inline SDL_Color _sdl_color(const Color &c) {

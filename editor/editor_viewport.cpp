@@ -15,6 +15,8 @@
 #include "scene/main/scene_tree.h"
 #include "scene/resources/texture.h"
 
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -68,6 +70,29 @@ Rect2 _item_rect(const CanvasItem *p_item, real_t p_min_size) {
 }
 
 } // namespace
+
+// Rectangle englobant, dans le monde, tous les éléments 2D visibles sous p_node.
+bool EditorNode::_get_canvas_bounds(Node *p_node, Rect2 &r_rect) {
+	bool any = false;
+	if (CanvasItem *item = Object::cast_to<CanvasItem>(p_node)) {
+		if (!item->is_visible()) {
+			return false;
+		}
+		const Rect2 local = item->_edit_get_rect().abs();
+		if (local.size.x > 0.5f && local.size.y > 0.5f) {
+			r_rect = _item_world_xform(item).xform(local);
+			any = true;
+		}
+	}
+	for (Node *child : p_node->get_children_vector()) {
+		Rect2 rect;
+		if (_get_canvas_bounds(child, rect)) {
+			r_rect = any ? r_rect.merge(rect) : rect;
+			any = true;
+		}
+	}
+	return any;
+}
 
 Transform2D EditorNode::_get_view_transform() const {
 	return Transform2D(0, Size2(view_zoom, view_zoom), -view_offset * view_zoom);
@@ -159,8 +184,10 @@ void EditorNode::_render_edit_view() {
 		return;
 	}
 	RenderingServer *rs = RenderingServer::get_singleton();
-	rs->set_render_target(edit_target);
-	rs->clear(Color(0.13f, 0.14f, 0.17f));
+	rs->set_render_target(edit_target, edit_target_ratio);
+	rs->clear(palette.dark ? Color(0.13f, 0.14f, 0.17f) : Color(0.30f, 0.31f, 0.35f));
+	// Le texte de la scène est tracé à sa taille à l'écran : il reste net quand on zoome.
+	edit_tree->set_render_scale(view_zoom * edit_target_ratio);
 
 	const Transform2D view = _get_view_transform();
 	const Size2 size = edit_target_size;
@@ -209,9 +236,9 @@ void EditorNode::_draw_viewport_dock() {
 		focus_viewport = false;
 		ImGui::SetNextWindowFocus();
 	}
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ES(4), ES(4)));
 	_update_view_mode();
-	const bool visible = ImGui::Begin(view_3d ? "Vue 3D###Viewport" : "Vue 2D###Viewport", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+	const bool visible = ImGui::Begin(view_3d ? ICON_VIEW_3D "  Vue 3D###Viewport" : ICON_VIEW_2D "  Vue 2D###Viewport", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 	ImGui::PopStyleVar();
 	if (!visible) {
 		ImGui::End();
@@ -222,25 +249,7 @@ void EditorNode::_draw_viewport_dock() {
 		return;
 	}
 
-	// --- Choix de la vue : 2D ou 3D (suit automatiquement le type du nœud sélectionné) ---
-	for (int mode = 0; mode < 2; mode++) {
-		const bool active = view_3d == (mode == 1);
-		if (active) {
-			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-		}
-		if (ImGui::Button(mode == 0 ? "2D" : "3D")) {
-			view_3d = mode == 1;
-			drag = DRAG_NONE;
-			drag3d = DRAG3D_NONE;
-		}
-		if (active) {
-			ImGui::PopStyleColor();
-		}
-		ImGui::SetItemTooltip("%s", mode == 0 ? "Vue 2D : canvas, sprites, interface" : "Vue 3D : maillages, lumières, caméras");
-		ImGui::SameLine();
-	}
-	ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-	ImGui::SameLine();
+	workspace_active = view_3d ? WORKSPACE_3D : WORKSPACE_2D;
 	if (view_3d) {
 		tile_paint = false;
 		_draw_viewport_3d();
@@ -250,39 +259,23 @@ void EditorNode::_draw_viewport_dock() {
 
 	// --- Barre d'outils ---
 	auto tool_button = [this](const char *p_label, Tool p_tool, const char *p_tip) {
-		const bool active = tool == p_tool && !tile_paint;
-		if (active) {
-			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-		}
-		if (ImGui::Button(p_label)) {
+		if (_toggle_button(p_label, tool == p_tool && !tile_paint, p_tip)) {
 			tool = p_tool;
 			tile_paint = false;
 		}
-		if (active) {
-			ImGui::PopStyleColor();
-		}
-		ImGui::SetItemTooltip("%s", p_tip);
 		ImGui::SameLine();
 	};
-	tool_button("Déplacer", TOOL_SELECT, "Sélectionner et déplacer (Q)");
-	tool_button("Pivoter", TOOL_ROTATE, "Faire pivoter le nœud sélectionné (E)\nCtrl : pas de 15°");
-	tool_button("Échelle", TOOL_SCALE, "Redimensionner le nœud sélectionné (R)\nMaj : conserver les proportions");
+	tool_button(ICON_TOOL_MOVE "  Déplacer", TOOL_SELECT, "Sélectionner et déplacer (Q)");
+	tool_button(ICON_TOOL_ROTATE "  Pivoter", TOOL_ROTATE, "Faire pivoter le nœud sélectionné (E)\nCtrl : pas de 15°");
+	tool_button(ICON_TOOL_SCALE "  Échelle", TOOL_SCALE, "Redimensionner le nœud sélectionné (R)\nMaj : conserver les proportions");
 
 	TileMap *tile_map = Object::cast_to<TileMap>(_get_selected());
 	if (tile_map) {
 		ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
 		ImGui::SameLine();
-		if (tile_paint) {
-			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-		}
-		const bool was_painting = tile_paint;
-		if (ImGui::Button("Peindre les tuiles")) {
+		if (_toggle_button(ICON_NODE_TILEMAP "  Peindre les tuiles", tile_paint, "Clic gauche : poser une tuile\nClic droit : effacer")) {
 			tile_paint = !tile_paint;
 		}
-		if (was_painting) {
-			ImGui::PopStyleColor();
-		}
-		ImGui::SetItemTooltip("Clic gauche : poser une tuile\nClic droit : effacer");
 		ImGui::SameLine();
 	} else {
 		tile_paint = false;
@@ -290,12 +283,15 @@ void EditorNode::_draw_viewport_dock() {
 
 	ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
 	ImGui::SameLine();
-	ImGui::Checkbox("Grille", &show_grid);
+	if (_toggle_button(ICON_GRID "##grid", show_grid, "Afficher la grille")) {
+		show_grid = !show_grid;
+	}
 	ImGui::SameLine();
-	ImGui::Checkbox("Aimant", &snap_enabled);
-	ImGui::SetItemTooltip("Aimanter les déplacements à la grille");
+	if (_toggle_button(ICON_MAGNET "##snap_on", snap_enabled, "Aimanter les déplacements à la grille")) {
+		snap_enabled = !snap_enabled;
+	}
 	ImGui::SameLine();
-	ImGui::SetNextItemWidth(70);
+	ImGui::SetNextItemWidth(ES(70));
 	if (ImGui::DragFloat("##snap", &snap_step, 0.5f, 1.0f, 512.0f, "%.0f px")) {
 		snap_step = std::max(1.0f, snap_step);
 	}
@@ -303,7 +299,7 @@ void EditorNode::_draw_viewport_dock() {
 	ImGui::SameLine();
 	ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
 	ImGui::SameLine();
-	if (ImGui::Button("Centrer")) {
+	if (ImGui::Button(ICON_FOCUS "  Centrer")) {
 		_focus_selection();
 	}
 	ImGui::SetItemTooltip("Centrer la vue sur la sélection (F)");
@@ -319,20 +315,23 @@ void EditorNode::_draw_viewport_dock() {
 	ImGui::TextDisabled("%d %%", (int)std::round(view_zoom * 100.0f));
 
 	// --- Palette de tuiles (à droite) ---
-	const float palette_width = (tile_map && tile_paint) ? 196.0f : 0.0f;
+	const float palette_width = (tile_map && tile_paint) ? ES(196) : 0.0f;
 
 	// --- Zone de dessin ---
 	ImVec2 avail = ImGui::GetContentRegionAvail();
 	avail.x -= palette_width > 0 ? palette_width + ImGui::GetStyle().ItemSpacing.x : 0;
 	const Size2 size(std::max(16.0f, std::floor(avail.x)), std::max(16.0f, std::floor(avail.y)));
 	RenderingServer *rs = RenderingServer::get_singleton();
-	if (!edit_target.is_valid() || edit_target_size != size) {
+	// La cible de rendu est en pixels réels (écrans à haute densité) ; edit_target_size reste
+	// en unités d'interface, comme les coordonnées de la souris.
+	if (!edit_target.is_valid() || edit_target_size != size || edit_target_ratio != pixel_ratio) {
 		const bool first = !edit_target.is_valid();
 		if (edit_target.is_valid()) {
 			rs->free_rid(edit_target);
 		}
-		edit_target = rs->texture_create_target((int)size.x, (int)size.y);
+		edit_target = rs->texture_create_target(std::max(1, (int)std::round(size.x * pixel_ratio)), std::max(1, (int)std::round(size.y * pixel_ratio)));
 		edit_target_size = size;
+		edit_target_ratio = pixel_ratio;
 		if (first || view_autofit) {
 			_focus_selection();
 		}
@@ -818,36 +817,37 @@ void EditorNode::_draw_game_dock() {
 		focus_game = false;
 		ImGui::SetNextWindowFocus();
 	}
-	if (!ImGui::Begin("Jeu###Game", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoNav)) {
+	if (!ImGui::Begin(ICON_DOCK_GAME "  Jeu###Game", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoNav)) {
 		ImGui::End();
 		return;
 	}
+	workspace_active = WORKSPACE_GAME;
 	if (!game.is_running()) {
 		ImGui::Spacing();
 		ImGui::TextDisabled("Le jeu n'est pas lancé.");
 		ImGui::Spacing();
-		if (ImGui::Button("Lancer le projet (F5)", ImVec2(240, 0))) {
+		if (_accent_button(ICON_PLAY "  Lancer le projet (F5)", ES(280))) {
 			_defer([this]() { _play_main(); });
 		}
-		if (ImGui::Button("Lancer la scène courante (F6)", ImVec2(240, 0))) {
+		if (ImGui::Button(ICON_PLAY_SCENE "  Lancer la scène courante (F6)", ImVec2(ES(280), 0))) {
 			_defer([this]() { _play_current(); });
 		}
 		ImGui::End();
 		return;
 	}
 
-	if (ImGui::Button(game_paused ? "Reprendre" : "Pause")) {
+	if (ImGui::Button(game_paused ? ICON_PLAY "  Reprendre###pause" : ICON_PAUSE "  Pause###pause")) {
 		game_paused = !game_paused;
 		if (game_paused) {
 			Input::get_singleton()->release_all();
 		}
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Arrêter (F8)")) {
+	if (ImGui::Button(ICON_STOP "  Arrêter (F8)")) {
 		_defer([this]() { _stop(); });
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Relancer")) {
+	if (ImGui::Button(ICON_REFRESH "  Relancer")) {
 		const String scene = game.get_scene_path();
 		_defer([this, scene]() { _play(scene); });
 	}
@@ -859,10 +859,9 @@ void EditorNode::_draw_game_dock() {
 	const ImVec2 avail = ImGui::GetContentRegionAvail();
 	const ImVec2 base = ImGui::GetCursorScreenPos();
 	if (avail.x > 8 && avail.y > 8 && game_size.x > 0 && game_size.y > 0 && game_target.is_valid()) {
-		real_t scale = std::min(avail.x / game_size.x, avail.y / game_size.y);
-		if (scale > 1.0f) {
-			scale = std::floor(scale); // agrandissement entier : pixels nets
-		}
+		// L'image occupe toute la place disponible : le jeu est rendu directement à cette
+		// taille (voir _update_game_target), pas étiré.
+		const real_t scale = std::min(avail.x / game_size.x, avail.y / game_size.y);
 		const Size2 image_size(std::floor(game_size.x * scale), std::floor(game_size.y * scale));
 		const ImVec2 pos(std::floor(base.x + (avail.x - image_size.x) * 0.5f), std::floor(base.y + (avail.y - image_size.y) * 0.5f));
 		ImGui::InvisibleButton("##game", avail, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
@@ -874,16 +873,20 @@ void EditorNode::_draw_game_dock() {
 		ImDrawList *dl = ImGui::GetWindowDrawList();
 		dl->AddRectFilled(base, ImVec2(base.x + avail.x, base.y + avail.y), IM_COL32(12, 13, 16, 255));
 		dl->AddImage(_texture_id(game_target), pos, ImVec2(pos.x + image_size.x, pos.y + image_size.y));
-		dl->AddRect(ImVec2(pos.x - 1, pos.y - 1), ImVec2(pos.x + image_size.x + 1, pos.y + image_size.y + 1), game_view_focused ? IM_COL32(110, 150, 255, 255) : IM_COL32(70, 76, 88, 255));
+		dl->AddRect(ImVec2(pos.x - 1, pos.y - 1), ImVec2(pos.x + image_size.x + 1, pos.y + image_size.y + 1), game_view_focused ? EditorUI::u32(palette.accent) : EditorUI::u32(palette.border));
 		if (game_paused) {
 			dl->AddRectFilled(pos, ImVec2(pos.x + image_size.x, pos.y + image_size.y), IM_COL32(0, 0, 0, 110));
 			const char *text = "EN PAUSE";
 			const ImVec2 text_size = ImGui::CalcTextSize(text);
 			dl->AddText(ImVec2(pos.x + (image_size.x - text_size.x) * 0.5f, pos.y + (image_size.y - text_size.y) * 0.5f), IM_COL32_WHITE, text);
 		} else if (!game_view_focused) {
-			const char *text = "Cliquez dans la vue pour envoyer le clavier au jeu";
+			// Pastille en haut de l'image : elle ne recouvre pas l'interface du jeu, souvent en bas.
+			const char *text = ICON_KEYBOARD "  Cliquez dans la vue pour envoyer le clavier au jeu";
 			const ImVec2 text_size = ImGui::CalcTextSize(text);
-			dl->AddText(ImVec2(pos.x + (image_size.x - text_size.x) * 0.5f, pos.y + image_size.y - text_size.y - 8), IM_COL32(255, 255, 255, 170), text);
+			const ImVec2 pill_min(pos.x + (image_size.x - text_size.x) * 0.5f - ES(12), pos.y + ES(8));
+			const ImVec2 pill_max(pill_min.x + text_size.x + ES(24), pill_min.y + text_size.y + ES(10));
+			dl->AddRectFilled(pill_min, pill_max, IM_COL32(0, 0, 0, 150), (pill_max.y - pill_min.y) * 0.5f);
+			dl->AddText(ImVec2(pill_min.x + ES(12), pill_min.y + ES(5)), IM_COL32(255, 255, 255, 230), text);
 		}
 	}
 	ImGui::End();

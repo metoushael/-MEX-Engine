@@ -12,6 +12,8 @@
 #include "scene/main/scene_tree.h"
 #include "scene/resources/shape_3d.h"
 
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -87,6 +89,11 @@ bool _world_aabb(Node *p_node, AABB &r_aabb, bool &r_first) {
 }
 
 } // namespace
+
+bool EditorNode::_get_world_aabb(Node *p_node, AABB &r_aabb) {
+	bool first = true;
+	return _world_aabb(p_node, r_aabb, first);
+}
 
 // ---------------------------------------------------------------------------
 // Choix automatique du mode 2D / 3D selon le nœud sélectionné
@@ -306,7 +313,7 @@ void EditorNode::_render_edit_view_3d() {
 	RenderingServer3D::RenderExtras extras;
 	extras.lines = &view3d_lines;
 	extras.overlay_lines = &view3d_overlay_lines;
-	extras.fallback_background = Color(0.16f, 0.17f, 0.2f, 1);
+	extras.fallback_background = palette.dark ? Color(0.16f, 0.17f, 0.2f, 1) : Color(0.62f, 0.64f, 0.68f, 1);
 	rs3d->render(view3d_viewport, edit_tree->get_scenario(), _get_camera_3d(), extras);
 }
 
@@ -315,33 +322,29 @@ void EditorNode::_render_edit_view_3d() {
 // ---------------------------------------------------------------------------
 void EditorNode::_draw_viewport_3d() {
 	auto tool_button = [this](const char *p_label, Tool p_tool, const char *p_tip) {
-		const bool active = tool == p_tool;
-		if (active) {
-			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-		}
-		if (ImGui::Button(p_label)) {
+		if (_toggle_button(p_label, tool == p_tool, p_tip)) {
 			tool = p_tool;
 		}
-		if (active) {
-			ImGui::PopStyleColor();
-		}
-		ImGui::SetItemTooltip("%s", p_tip);
 		ImGui::SameLine();
 	};
-	tool_button("Déplacer", TOOL_SELECT, "Sélectionner et déplacer (Q)\nFaites glisser un axe, ou le centre pour un déplacement libre");
-	tool_button("Pivoter", TOOL_ROTATE, "Faire pivoter autour d'un axe (E)\nCtrl : pas de 15°");
-	tool_button("Échelle", TOOL_SCALE, "Redimensionner selon un axe (R)\nCentre : échelle uniforme");
+	tool_button(ICON_TOOL_MOVE "  Déplacer", TOOL_SELECT, "Sélectionner et déplacer (Q)\nFaites glisser un axe, ou le centre pour un déplacement libre");
+	tool_button(ICON_TOOL_ROTATE "  Pivoter", TOOL_ROTATE, "Faire pivoter autour d'un axe (E)\nCtrl : pas de 15°");
+	tool_button(ICON_TOOL_SCALE "  Échelle", TOOL_SCALE, "Redimensionner selon un axe (R)\nCentre : échelle uniforme");
 	ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
 	ImGui::SameLine();
-	ImGui::Checkbox("Grille", &show_grid);
+	if (_toggle_button(ICON_GRID "##grid", show_grid, "Afficher la grille")) {
+		show_grid = !show_grid;
+	}
 	ImGui::SameLine();
-	ImGui::Checkbox("Local", &gizmo_local);
-	ImGui::SetItemTooltip("Axes du manipulateur alignés sur le nœud plutôt que sur le monde");
+	if (_toggle_button(ICON_NODE_3D "  Local", gizmo_local, "Axes du manipulateur alignés sur le nœud plutôt que sur le monde")) {
+		gizmo_local = !gizmo_local;
+	}
 	ImGui::SameLine();
-	ImGui::Checkbox("Aimant", &snap_enabled);
-	ImGui::SetItemTooltip("Aimanter les déplacements au pas indiqué");
+	if (_toggle_button(ICON_MAGNET "##snap_on", snap_enabled, "Aimanter les déplacements au pas indiqué")) {
+		snap_enabled = !snap_enabled;
+	}
 	ImGui::SameLine();
-	ImGui::SetNextItemWidth(64);
+	ImGui::SetNextItemWidth(ES(64));
 	if (ImGui::DragFloat("##snap3d", &snap_step_3d, 0.05f, 0.01f, 100.0f, "%.2f m")) {
 		snap_step_3d = std::max(0.01f, snap_step_3d);
 	}
@@ -349,12 +352,12 @@ void EditorNode::_draw_viewport_3d() {
 	ImGui::SameLine();
 	ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
 	ImGui::SameLine();
-	if (ImGui::Button("Centrer")) {
+	if (ImGui::Button(ICON_FOCUS "  Centrer")) {
 		_focus_selection_3d();
 	}
 	ImGui::SetItemTooltip("Centrer la vue sur la sélection (F)");
 	ImGui::SameLine();
-	if (ImGui::Button("Vue")) {
+	if (ImGui::Button(ICON_EYE "  Vue")) {
 		ImGui::OpenPopup("##vue3d");
 	}
 	ImGui::SetItemTooltip("Projection et vues prédéfinies");
@@ -392,12 +395,14 @@ void EditorNode::_draw_viewport_3d() {
 		ImGui::TextDisabled("%s", message);
 		return;
 	}
+	// Rendu en pixels réels (écrans à haute densité) ; view3d_size reste en unités d'interface.
+	const int pixels_w = std::max(1, (int)std::round(size.x * pixel_ratio)), pixels_h = std::max(1, (int)std::round(size.y * pixel_ratio));
 	if (!view3d_viewport.is_valid()) {
-		view3d_viewport = rs3d->viewport_create((int)size.x, (int)size.y);
+		view3d_viewport = rs3d->viewport_create(pixels_w, pixels_h);
 		view3d_size = size;
 		_focus_selection_3d();
-	} else if (view3d_size != size) {
-		rs3d->viewport_set_size(view3d_viewport, (int)size.x, (int)size.y);
+	} else if (view3d_size != size || rs3d->viewport_get_size(view3d_viewport) != Size2((real_t)pixels_w, (real_t)pixels_h)) {
+		rs3d->viewport_set_size(view3d_viewport, pixels_w, pixels_h);
 		view3d_size = size;
 	}
 	viewport_visible = true;

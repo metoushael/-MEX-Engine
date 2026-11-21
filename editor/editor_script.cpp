@@ -12,6 +12,8 @@
 #include "modules/mexscript/mexscript_parser.h"
 #include "scene/main/scene_tree.h"
 
+#include "editor_ui.h"
+
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "misc/cpp/imgui_stdlib.h"
@@ -192,11 +194,12 @@ void EditorNode::_draw_script_dock() {
 		focus_script = false;
 		ImGui::SetNextWindowFocus();
 	}
-	const bool visible = ImGui::Begin("Script###Script", nullptr, script_dirty ? ImGuiWindowFlags_UnsavedDocument : 0);
+	const bool visible = ImGui::Begin(ICON_DOCK_SCRIPT "  Script###Script", nullptr, script_dirty ? ImGuiWindowFlags_UnsavedDocument : 0);
 	if (!visible) {
 		ImGui::End();
 		return;
 	}
+	workspace_active = WORKSPACE_SCRIPT;
 	if (script_path.empty()) {
 		ImGui::Spacing();
 		ImGui::TextDisabled("Aucun script ouvert.");
@@ -257,7 +260,7 @@ void EditorNode::_draw_script_dock() {
 	}
 
 	if (!script_error.empty()) {
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.45f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Text, EditorUI::col(palette.error));
 		ImGui::AlignTextToFramePadding();
 		ImGui::Text("Ligne %d : %s", script_error_line, script_error.c_str());
 		ImGui::PopStyleColor();
@@ -307,7 +310,7 @@ void EditorNode::_draw_project_settings() {
 	bool changed = false;
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(640, 560), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(ES(640), ES(560)), ImGuiCond_Appearing);
 	if (!ImGui::Begin("Paramètres du projet###ProjectSettings", &settings_open, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
 		ImGui::End();
 		return;
@@ -315,7 +318,7 @@ void EditorNode::_draw_project_settings() {
 
 	auto edit_string = [&](const char *p_label, const char *p_key) {
 		std::string value = ps->get_setting(p_key).as_string();
-		ImGui::SetNextItemWidth(340);
+		ImGui::SetNextItemWidth(ES(340));
 		if (ImGui::InputText(p_label, &value)) {
 			ps->set_setting(p_key, Variant(String(value)));
 			changed = true;
@@ -323,7 +326,7 @@ void EditorNode::_draw_project_settings() {
 	};
 	auto edit_int = [&](const char *p_label, const char *p_key, int p_min, int p_max) {
 		int value = (int)ps->get_setting(p_key).as_int();
-		ImGui::SetNextItemWidth(160);
+		ImGui::SetNextItemWidth(ES(160));
 		if (ImGui::InputInt(p_label, &value, 0, 0)) {
 			ps->set_setting(p_key, Variant((int64_t)std::clamp(value, p_min, p_max)));
 			changed = true;
@@ -345,7 +348,7 @@ void EditorNode::_draw_project_settings() {
 			ImGui::SetItemTooltip("Image du projet, par exemple res://icone.png. Vide : icône de MEX.");
 			{
 				const String main_scene = ps->get_setting("application/main_scene").as_string();
-				ImGui::SetNextItemWidth(340);
+				ImGui::SetNextItemWidth(ES(340));
 				if (ImGui::BeginCombo("Scène principale", main_scene.empty() ? "<aucune>" : main_scene.c_str())) {
 					for (const String &file : fs_files) {
 						if (path_get_extension(file) != "scn") {
@@ -372,13 +375,13 @@ void EditorNode::_draw_project_settings() {
 			{
 				Color c = ps->get_setting("rendering/clear_color").as_color();
 				float f[4] = { c.r, c.g, c.b, c.a };
-				ImGui::SetNextItemWidth(340);
+				ImGui::SetNextItemWidth(ES(340));
 				if (ImGui::ColorEdit3("Couleur de fond", f)) {
 					ps->set_setting("rendering/clear_color", Variant(Color(f[0], f[1], f[2], 1.0f)));
 					changed = true;
 				}
 				const String filter = ps->get_setting("rendering/texture_filter").as_string();
-				ImGui::SetNextItemWidth(340);
+				ImGui::SetNextItemWidth(ES(340));
 				if (ImGui::BeginCombo("Filtre des textures", filter == "nearest" ? "Pixels nets (nearest)" : "Lissé (linear)")) {
 					if (ImGui::Selectable("Lissé (linear)", filter != "nearest")) {
 						ps->set_setting("rendering/texture_filter", Variant(String("linear")));
@@ -396,7 +399,7 @@ void EditorNode::_draw_project_settings() {
 			ImGui::SeparatorText("Physique");
 			{
 				float gravity = (float)ps->get_setting("physics/gravity").as_float();
-				ImGui::SetNextItemWidth(160);
+				ImGui::SetNextItemWidth(ES(160));
 				if (ImGui::InputFloat("Gravité (px/s²)", &gravity, 0, 0, "%.1f")) {
 					ps->set_setting("physics/gravity", Variant((double)gravity));
 					changed = true;
@@ -410,7 +413,7 @@ void EditorNode::_draw_project_settings() {
 		if (ImGui::BeginTabItem("Contrôles")) {
 			ImGui::TextWrapped("Les actions s'utilisent dans les scripts : Input.is_action_pressed(\"sauter\"), Input.get_axis(\"gauche\", \"droite\")...");
 			ImGui::Spacing();
-			ImGui::SetNextItemWidth(260);
+			ImGui::SetNextItemWidth(ES(260));
 			const bool entered = ImGui::InputTextWithHint("##new_action", "Nom de la nouvelle action", &new_action_name, ImGuiInputTextFlags_EnterReturnsTrue);
 			ImGui::SameLine();
 			if (ImGui::Button("Ajouter l'action") || entered) {
@@ -434,7 +437,7 @@ void EditorNode::_draw_project_settings() {
 				const bool open = ImGui::TreeNodeEx("##action", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap, "%s", action.c_str());
 				ImGui::SameLine(ImGui::GetContentRegionAvail().x - 250);
 				if (capture_action == action) {
-					ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.45f, 0.15f, 1.0f));
+					ImGui::PushStyleColor(ImGuiCol_Button, EditorUI::col(palette.accent, 0.55f));
 					if (ImGui::SmallButton("Appuyez sur une touche... (Échap)")) {
 						capture_action.clear();
 					}

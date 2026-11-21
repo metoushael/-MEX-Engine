@@ -1,5 +1,6 @@
 #include "font.h"
 
+#include <cmath>
 #include <cstring>
 
 #include "core/io/file_access.h"
@@ -59,13 +60,28 @@ Error Font::load_from_file(const String &p_path) {
 	return OK;
 }
 
+int Font::oversampling_q = 4;
+
+void Font::set_oversampling(float p_factor) {
+	// Par quarts, entre x1 et x4 : le nombre d'atlas générés reste borné.
+	oversampling_q = Math::clamp((int)std::lround(p_factor * 4.0f), 4, 16);
+}
+
 const Font::SizeCache &Font::_get_cache(int p_size) const {
 	p_size = Math::clamp(p_size, 4, 256);
-	auto it = cache.find(p_size);
+	// Taille réelle des glyphes dans l'atlas (bornée : un atlas reste de taille raisonnable).
+	int quarters = oversampling_q;
+	while (quarters > 4 && p_size * quarters / 4 > 320) {
+		quarters--;
+	}
+	const float oversampling = quarters / 4.0f;
+	const int key = p_size | (quarters << 16);
+	auto it = cache.find(key);
 	if (it != cache.end()) {
 		return it->second;
 	}
-	SizeCache &sc = cache[p_size];
+	SizeCache &sc = cache[key];
+	sc.oversampling = oversampling;
 	if (data.empty()) {
 		return sc;
 	}
@@ -87,11 +103,11 @@ const Font::SizeCache &Font::_get_cache(int p_size) const {
 	std::vector<stbtt_packedchar> chars_b(extra_count);
 	stbtt_pack_range ranges[2];
 	memset(ranges, 0, sizeof(ranges));
-	ranges[0].font_size = (float)p_size;
+	ranges[0].font_size = (float)p_size * oversampling;
 	ranges[0].first_unicode_codepoint_in_range = 32;
 	ranges[0].num_chars = 0x180 - 32;
 	ranges[0].chardata_for_range = chars_a.data();
-	ranges[1].font_size = (float)p_size;
+	ranges[1].font_size = (float)p_size * oversampling;
 	ranges[1].array_of_unicode_codepoints = const_cast<int *>(extra_codepoints);
 	ranges[1].num_chars = extra_count;
 	ranges[1].chardata_for_range = chars_b.data();
@@ -127,8 +143,9 @@ const Font::SizeCache &Font::_get_cache(int p_size) const {
 	auto add_glyph = [&](uint32_t p_codepoint, const stbtt_packedchar &pc) {
 		Glyph g;
 		g.region = Rect2((real_t)pc.x0, (real_t)pc.y0, (real_t)(pc.x1 - pc.x0), (real_t)(pc.y1 - pc.y0));
-		g.offset = Vector2(pc.xoff, pc.yoff);
-		g.advance = pc.xadvance;
+		// Décalages et avance en unités logiques ; la région reste en pixels de l'atlas.
+		g.offset = Vector2(pc.xoff, pc.yoff) / oversampling;
+		g.advance = pc.xadvance / oversampling;
 		sc.glyphs[p_codepoint] = g;
 	};
 	for (int i = 0; i < 0x180 - 32; i++) {
@@ -208,8 +225,9 @@ void Font::draw_string(RID p_canvas_item, const Vector2 &p_pos, const String &p_
 		}
 		const Glyph &g = it->second;
 		if (g.region.size.x > 0 && g.region.size.y > 0) {
-			// Positions arrondies : texte net.
-			Rect2 dst(std::round(pen.x + g.offset.x), std::round(pen.y + g.offset.y), g.region.size.x, g.region.size.y);
+			// Positions arrondies au pixel réellement affiché : texte net.
+			const real_t os = sc.oversampling;
+			Rect2 dst(std::round((pen.x + g.offset.x) * os) / os, std::round((pen.y + g.offset.y) * os) / os, g.region.size.x / os, g.region.size.y / os);
 			rs->canvas_item_add_texture_rect_region(p_canvas_item, dst, atlas, g.region, p_color);
 		}
 		pen.x += g.advance;

@@ -43,11 +43,62 @@ private:
 
 	void _setup_imgui();
 	void _apply_style();
+
+	// --- Apparence : thèmes, échelle, préférences (editor_theme.cpp) --------------
+	// Couleurs du thème courant, à utiliser à la place de couleurs écrites en dur : elles
+	// restent lisibles sur fond clair comme sur fond sombre.
+	struct Palette {
+		bool dark = true;
+		Color bg, bg_dark, bg_light, frame, border;
+		Color text, text_dim;
+		Color accent, on_accent; // on_accent : texte posé sur la couleur d'accent
+		Color success, warning, error, info;
+		Color node_2d, node_3d, node_gui, node_layer, node_other;
+		Color folder, file_scene, file_script, file_image, file_audio, file_mesh, file_other;
+	} palette;
+	std::string pref_theme = "MEX Nuit";
+	Color pref_custom_base = Color(0.13f, 0.15f, 0.20f, 1.0f);
+	Color pref_accent = Color(1.0f, 0.478f, 0.0f, 1.0f);
+	bool pref_custom_accent = false;
+	float pref_ui_scale = 0.0f; // 0 : automatique (échelle d'affichage du système)
+	float pref_font_size = 16.0f;
+	float pref_rounding = 5.0f;
+	bool pref_thumbnails = true;
+	float pref_thumbnail_size = 72.0f;
+	bool pref_files_grid = false;
+	bool prefs_open = false;
+	bool style_dirty = false; // le style est réappliqué au début de l'image suivante
+	String prefs_path; // editor_settings.cfg
+	String prefs_dir; // dossier de préférences de l'utilisateur
+	float _get_auto_ui_scale() const;
+	void _load_prefs();
+	void _save_prefs();
+	void _draw_preferences();
+	// Bouton mis en avant (couleur d'accent) ; même comportement qu'ImGui::Button.
+	// Bouton à bascule de barre d'outils : fond teinté de la couleur d'accent quand il est actif.
+	bool _toggle_button(const char *p_label, bool p_active, const char *p_tip = nullptr);
+	bool _accent_button(const char *p_label, float p_width = 0.0f);
+	// Icône et couleur d'une classe de nœud ou d'un fichier.
+	static const char *_class_icon(const String &p_class);
+	Color _class_color(const String &p_class) const;
+	static const char *_file_icon(const String &p_path);
+	Color _file_color(const String &p_path) const;
 	void _shutdown_imgui();
 	void _process_event(const SDL_Event &p_event);
 	void _draw_ui();
 	void _draw_main_menu();
 	void _draw_toolbar();
+	// Espaces de travail : les grands onglets du centre, choisis dans la barre du haut.
+	enum {
+		WORKSPACE_2D,
+		WORKSPACE_3D,
+		WORKSPACE_SCRIPT,
+		WORKSPACE_GAME,
+		WORKSPACE_COUNT,
+	};
+	int workspace_active = WORKSPACE_2D;
+	void _switch_workspace(int p_workspace);
+	static std::vector<String> _get_theme_names();
 	void _build_default_layout(unsigned int p_dockspace_id);
 	void _handle_shortcuts();
 	void _request_quit();
@@ -64,13 +115,64 @@ private:
 	void _defer(std::function<void()> p_action) { deferred.push_back(std::move(p_action)); }
 
 	// --- Gestionnaire de projets ------------------------------------------------
+	// (editor_project_manager.cpp) La liste des projets connus est mémorisée dans
+	// projects.cfg, dans le dossier de préférences de l'utilisateur.
+	struct ProjectEntry {
+		String path; // dossier du projet, chemin absolu
+		String name;
+		String description;
+		String main_scene;
+		int width = 0, height = 0;
+		bool favorite = false;
+		bool missing = false; // le dossier ou project.mex n'existe plus
+		int64_t last_opened = 0; // secondes depuis 1970 ; 0 : jamais ouvert ici
+		Ref<Texture2D> icon;
+		bool icon_loaded = false;
+	};
+	enum {
+		PM_DIALOG_NONE,
+		PM_DIALOG_CREATE,
+		PM_DIALOG_IMPORT,
+		PM_DIALOG_RENAME,
+	};
+	// Sélecteur de dossier (le moteur n'utilise pas les boîtes de dialogue du système).
+	struct DirBrowser {
+		bool open_request = false;
+		String title;
+		String current;
+		std::string typed;
+		std::vector<String> dirs;
+		bool dirty = true;
+		bool is_project = false;
+		std::function<void(const String &)> callback;
+	} dir_browser;
+	std::vector<ProjectEntry> pm_projects;
+	std::vector<String> pm_removed; // projets retirés de la liste : ne pas les rajouter au scan
+	String pm_selected; // chemin du projet sélectionné
+	std::string pm_filter;
+	int pm_sort = 0; // 0 : dernière ouverture, 1 : nom, 2 : chemin
+	int pm_dialog = PM_DIALOG_NONE;
+	bool pm_dialog_open_request = false;
+	int pm_template = 0; // 0 : vide, 1 : jeu 2D, 2 : jeu 3D
 	std::string pm_open_path;
 	std::string pm_new_name = "MonJeu";
 	std::string pm_new_parent;
 	std::string pm_error;
-	std::vector<String> pm_found;
 	bool pm_scanned = false;
+	bool pm_play_after_open = false;
 	void _draw_project_manager();
+	void _draw_project_row(ProjectEntry &p_project, float p_width);
+	void _draw_project_dialogs();
+	void _draw_dir_browser();
+	void _browse_dir(const String &p_title, const String &p_start, std::function<void(const String &)> p_callback);
+	void _pm_load_list();
+	void _pm_save_list();
+	ProjectEntry *_pm_add(const String &p_path, bool p_force = true);
+	void _pm_refresh(ProjectEntry &p_project);
+	int _pm_scan(const String &p_dir, int p_depth);
+	ProjectEntry *_pm_find(const String &p_path);
+	bool _create_project(const String &p_dir, const String &p_name, int p_template);
+	void _close_project();
 	bool _open_project(const String &p_path);
 	void _project_opened();
 	void _apply_project_settings();
@@ -165,6 +267,96 @@ private:
 	FsEntry fs_root;
 	std::vector<String> fs_files; // tous les fichiers (res://...)
 	bool fs_dirty = true;
+	String fs_selected; // fichier sélectionné : son aperçu est affiché en bas du dock
+	String fs_current_dir = "res://"; // dossier affiché en mode grille
+	std::string fs_filter;
+	const FsEntry *_find_fs_entry(const FsEntry &p_entry, const String &p_path) const;
+	void _draw_fs_grid();
+	void _draw_fs_preview_panel();
+	void _fs_file_interactions(const String &p_path); // double-clic, glisser-déposer, menu contextuel
+	void _fs_dir_menu(const String &p_path);
+
+	// --- Moniteur (editor_monitor.cpp) : flux de mesures en temps réel ----------------------
+	enum {
+		MONITOR_FPS,
+		MONITOR_FRAME_TIME,
+		MONITOR_GAME_PROCESS,
+		MONITOR_GAME_DRAW,
+		MONITOR_ITEMS_2D,
+		MONITOR_DRAW_CALLS_3D,
+		MONITOR_TRIANGLES,
+		MONITOR_NODES,
+		MONITOR_OBJECTS,
+		MONITOR_COUNT,
+		MONITOR_SAMPLES = 240,
+	};
+	struct MonitorSeries {
+		float values[MONITOR_SAMPLES] = {};
+		int head = 0;
+		int count = 0;
+	};
+	MonitorSeries monitors[MONITOR_COUNT];
+	bool monitor_paused = false;
+	int monitor_items_2d = 0, monitor_draw_calls_3d = 0, monitor_triangles = 0;
+	void _monitor_push(int p_series, float p_value);
+	void _monitor_sample(double p_frame_usec, double p_game_process_usec, double p_game_draw_usec);
+	void _draw_monitor_dock();
+
+	// --- Aperçus (editor_preview.cpp) ---------------------------------------------------
+	// Miniatures des fichiers (images, maillages, scènes, sons, textes) et aperçus 3D
+	// interactifs de l'inspecteur (maillages, matériaux).
+	enum {
+		PREVIEW_NONE,
+		PREVIEW_IMAGE,
+		PREVIEW_MESH,
+		PREVIEW_SCENE,
+		PREVIEW_AUDIO,
+		PREVIEW_TEXT,
+	};
+	struct FilePreview {
+		int kind = PREVIEW_NONE;
+		bool ready = false; // généré (avec succès ou non)
+		bool queued = false;
+		uint64_t mtime = 0;
+		Ref<Texture2D> texture; // image
+		RID viewport; // rendu 3D (maillage, scène 3D)
+		RID target; // rendu 2D (scène 2D)
+		Size2 size; // taille de l'image d'aperçu
+		String info; // « 128 x 128 px », « 1 204 triangles »...
+		std::vector<float> peaks; // son : amplitude par colonne
+		std::vector<String> lines; // texte : premières lignes
+	};
+	struct LivePreview {
+		RID viewport;
+		Ref<Resource> mesh;
+		Ref<Resource> material;
+		float yaw = 0.6f, pitch = -0.35f;
+		int size = 0;
+		uint64_t last_used = 0;
+	};
+	std::map<String, FilePreview> previews;
+	std::vector<String> preview_queue;
+	std::map<ObjectID, LivePreview> live_previews;
+	uint64_t preview_frame = 0;
+	// Décor commun à tous les rendus d'aperçu 3D : un objet, deux lumières.
+	RID preview_scenario, preview_instance, preview_key_light, preview_fill_light;
+	Ref<Resource> preview_sphere;
+	static int _get_preview_kind(const String &p_path);
+	FilePreview *_get_preview(const String &p_path);
+	bool _has_preview_image(const FilePreview *p_preview) const;
+	// Dessine l'aperçu centré dans le rectangle ; renvoie faux s'il n'y a rien à montrer.
+	bool _draw_preview(const String &p_path, const Vector2 &p_min, const Vector2 &p_max);
+	void _draw_preview_tooltip(const String &p_path);
+	// Aperçu 3D interactif d'une ressource (maillage ou matériau) : à glisser pour tourner.
+	void _draw_resource_preview(const Ref<Resource> &p_resource);
+	void _render_previews();
+	void _generate_preview(const String &p_path, FilePreview &r_preview);
+	void _render_scene_preview(const String &p_path, FilePreview &r_preview, int p_size);
+	bool _render_preview_3d(RID p_viewport, RID p_mesh, const AABB &p_aabb, RID p_material, float p_yaw, float p_pitch);
+	void _free_preview(FilePreview &r_preview);
+	void _clear_previews();
+	static bool _get_world_aabb(Node *p_node, AABB &r_aabb);
+	static bool _get_canvas_bounds(Node *p_node, Rect2 &r_rect);
 	std::string fs_new_name;
 	String fs_new_dir;
 	int fs_new_kind = 0; // 1 = dossier, 2 = script
@@ -220,7 +412,8 @@ private:
 		DRAG_ERASE,
 	};
 	RID edit_target;
-	Size2 edit_target_size;
+	Size2 edit_target_size; // en unités d'interface
+	float edit_target_ratio = 1.0f; // pixels de la cible par unité d'interface
 	Vector2 view_offset = Vector2(-120, -80); // position monde du coin haut-gauche
 	real_t view_zoom = 1.0f;
 	Tool tool = TOOL_SELECT;
@@ -299,7 +492,10 @@ private:
 	// --- Jeu (mode « Jouer ») -----------------------------------------------------------
 	GameRunner game;
 	RID game_target;
-	Size2 game_size;
+	Size2 game_size; // résolution logique du jeu
+	Size2 game_target_size; // taille réelle de la cible, en pixels
+	float pixel_ratio = 1.0f; // pixels réels par unité d'interface (2 sur un écran Retina)
+	float _update_game_target(); // renvoie l'échelle de rendu
 	bool game_paused = false;
 	bool focus_game = false;
 	bool game_view_focused = false;

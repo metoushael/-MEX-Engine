@@ -15,11 +15,74 @@ DisplayServer::~DisplayServer() {
 	}
 }
 
+// Échelle d'affichage du système pour l'écran p_display.
+static float _detect_screen_scale(int p_display) {
+	if (const char *forced = SDL_getenv("MEX_SCREEN_SCALE")) {
+		const float value = (float)SDL_atof(forced);
+		if (value >= 0.5f && value <= 4.0f) {
+			return value;
+		}
+	}
+#if defined(__APPLE__)
+	return 1.0f; // la fenêtre est en points ; SDL fournit une surface de rendu plus dense
+#elif defined(_WIN32)
+	// Le processus étant déclaré « conscient de la densité », Windows donne ici 96 x l'échelle
+	// choisie dans les paramètres d'affichage (120 pour 125 %, 144 pour 150 %...).
+	float ddpi = 0, hdpi = 0, vdpi = 0;
+	if (SDL_GetDisplayDPI(p_display, &ddpi, &hdpi, &vdpi) == 0 && hdpi > 0) {
+		return SDL_clamp(hdpi / 96.0f, 1.0f, 4.0f);
+	}
+	return 1.0f;
+#else
+	// X11 ne donne pas d'échelle fiable : on se fie à la définition de l'écran. Sous Wayland,
+	// la densité passe par get_pixel_ratio().
+	const char *driver = SDL_GetCurrentVideoDriver();
+	SDL_DisplayMode mode;
+	if (driver && SDL_strcmp(driver, "x11") == 0 && SDL_GetDesktopDisplayMode(p_display, &mode) == 0) {
+		if (mode.h >= 2000) {
+			return 2.0f;
+		}
+		if (mode.h >= 1700) {
+			return 1.5f;
+		}
+	}
+	return 1.0f;
+#endif
+}
+
+float DisplayServer::get_pixel_ratio() const {
+	if (!window || !renderer) {
+		return 1.0f;
+	}
+	int window_w = 0, window_h = 0, output_w = 0, output_h = 0;
+	SDL_GetWindowSize(window, &window_w, &window_h);
+	SDL_GetRendererOutputSize(renderer, &output_w, &output_h);
+	return window_w > 0 && output_w > 0 ? (float)output_w / (float)window_w : 1.0f;
+}
+
 Error DisplayServer::create(const WindowOptions &p_options) {
+	// Windows : sans cette déclaration, le système étire l'image de la fenêtre sur les écrans
+	// réglés à 125 %, 150 %... et tout paraît flou. À faire avant l'initialisation de la vidéo.
+	SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
 	if (SDL_WasInit(SDL_INIT_VIDEO) == 0) {
 		if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
 			print_error(String("SDL_Init: ") + SDL_GetError());
 			return ERR_CANT_CREATE;
+		}
+	}
+	screen_scale = _detect_screen_scale(0);
+	int width = p_options.width, height = p_options.height;
+	if (p_options.scale_with_screen && screen_scale > 1.0f) {
+		width = (int)(width * screen_scale);
+		height = (int)(height * screen_scale);
+		SDL_Rect usable;
+		if (SDL_GetDisplayUsableBounds(0, &usable) == 0 && usable.w > 0 && usable.h > 0) {
+			// La fenêtre ne dépasse pas de l'écran ; ses proportions sont conservées.
+			const float fit = SDL_min((float)usable.w * 0.95f / (float)width, (float)usable.h * 0.9f / (float)height);
+			if (fit < 1.0f) {
+				width = (int)(width * fit);
+				height = (int)(height * fit);
+			}
 		}
 	}
 	Uint32 flags = SDL_WINDOW_ALLOW_HIGHDPI;
@@ -35,7 +98,7 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 	if (p_options.hidden) {
 		flags |= SDL_WINDOW_HIDDEN;
 	}
-	window = SDL_CreateWindow(p_options.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, p_options.width, p_options.height, flags);
+	window = SDL_CreateWindow(p_options.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
 	if (!window) {
 		print_error(String("SDL_CreateWindow: ") + SDL_GetError());
 		return ERR_CANT_CREATE;
