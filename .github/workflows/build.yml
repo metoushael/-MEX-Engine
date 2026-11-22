@@ -234,18 +234,12 @@ jobs:
           mkdir -p "$PACKAGE/licences"
           cp dist/* "$PACKAGE/"
           cp -r projects docs README.md "$PACKAGE/"
-<<<<<<< HEAD
-=======
 
->>>>>>> df312da12e1eb6e8f7b704b5225bdf69ffe95a80
           # Modèle d'export de ce système. Pour exporter vers les autres systèmes, on réunit les
           # dossiers « templates » des trois archives à côté de l'éditeur.
           mkdir -p "$PACKAGE/templates/${{ matrix.platform }}"
           cp dist/mex-jeu* "$PACKAGE/templates/${{ matrix.platform }}/"
-<<<<<<< HEAD
-=======
 
->>>>>>> df312da12e1eb6e8f7b704b5225bdf69ffe95a80
           # Identité visuelle : guide du logo, logos et icônes (le README affiche le logo).
           mkdir -p "$PACKAGE/branding"
           cp -r branding/GUIDE.md branding/mex-presentation.html branding/svg branding/png branding/web branding/app branding/mex.ico branding/mex.icns "$PACKAGE/branding/"
