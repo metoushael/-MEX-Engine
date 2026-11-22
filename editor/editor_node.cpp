@@ -171,6 +171,7 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 		ImGui_ImplSDLRenderer2_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
+		_collect_brand_images();
 
 		_draw_ui();
 		_fit_floating_windows();
@@ -282,6 +283,7 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 		rs->free_rid(game_target);
 	}
 	logo.unref();
+	_free_brand_images();
 	remove_print_handler(print_handler_id);
 	_shutdown_imgui();
 	ScriptServer::set_scripting_enabled(true);
@@ -535,35 +537,6 @@ void EditorNode::_update_window_title() {
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
-// En-tête de marque : icône, mot « MEX » (le X en Orange MEX), nom complet et version.
-float EditorNode::_draw_brand_header(float p_logo_size) {
-	const ImVec2 start = ImGui::GetCursorScreenPos();
-	float text_x = start.x;
-	if (logo.is_valid()) {
-		ImTextureID id = (ImTextureID)(intptr_t)RenderingServer::get_singleton()->texture_get_native(logo->get_rid());
-		ImGui::GetWindowDrawList()->AddImage(id, start, ImVec2(start.x + p_logo_size, start.y + p_logo_size));
-		text_x += p_logo_size + ES(14);
-	}
-	const float word_size = p_logo_size * 0.56f;
-	const float line_gap = 2.0f;
-	const float block_height = word_size + line_gap + ImGui::GetFontSize();
-	ImGui::SetCursorScreenPos(ImVec2(text_x, start.y + (p_logo_size - block_height) * 0.5f));
-	ImGui::BeginGroup();
-	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, line_gap));
-	ImGui::PushFont(nullptr, word_size / EditorUI::scale); // PushFont attend une taille avant mise à l'échelle
-	ImGui::TextUnformatted("ME");
-	ImGui::SameLine(0, 0);
-	ImGui::TextColored(ImVec4(1.0f, 0.478f, 0.0f, 1.0f), "X"); // Orange MEX, quel que soit le thème
-	ImGui::PopFont();
-	ImGui::TextDisabled("Metoushela Engine X  ·  version %s", MEX_VERSION);
-	ImGui::PopStyleVar();
-	ImGui::EndGroup();
-	const float right = ImGui::GetItemRectMax().x;
-	ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + p_logo_size));
-	ImGui::Dummy(ImVec2(0, 4));
-	return right;
-}
-
 void EditorNode::_draw_ui() {
 	if (!project_loaded) {
 		_draw_project_manager();
@@ -683,14 +656,13 @@ void EditorNode::_draw_main_menu() {
 	}
 	const float bar_h = ImGui::GetWindowHeight();
 	const float bar_w = ImGui::GetWindowWidth();
+	// Symbole de MEX, à gauche des menus.
 	float logo_end = ES(10);
-	if (logo.is_valid()) {
-		const float size = bar_h - ES(12);
+	{
+		const float symbol_h = std::floor(bar_h * 0.5f);
 		const ImVec2 origin = ImGui::GetWindowPos();
-		const ImVec2 pos(origin.x + ES(10), origin.y + (bar_h - size) * 0.5f);
-		ImTextureID id = (ImTextureID)(intptr_t)RenderingServer::get_singleton()->texture_get_native(logo->get_rid());
-		ImGui::GetWindowDrawList()->AddImage(id, pos, ImVec2(pos.x + size, pos.y + size));
-		logo_end = ES(10) + size + ES(8);
+		const float symbol_w = _draw_brand_symbol(ImGui::GetWindowDrawList(), ImVec2(origin.x + ES(10), origin.y + (bar_h - symbol_h) * 0.5f), symbol_h);
+		logo_end = ES(10) + symbol_w + ES(10);
 		ImGui::SetCursorPosX(logo_end);
 	}
 

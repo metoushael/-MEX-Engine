@@ -19,6 +19,8 @@ class TileMap;
 class AnimatedSprite2D;
 class AnimationPlayer;
 struct ImFont;
+struct ImDrawList;
+struct ImVec2;
 union SDL_Event;
 
 class EditorNode {
@@ -276,8 +278,21 @@ private:
 		String selected;
 	} create_dialog;
 	bool about_open = false;
-	Ref<Texture2D> logo; // icône de MEX (fenêtre « À propos », gestionnaire de projets)
-	float _draw_brand_header(float p_logo_size); // renvoie le bord droit du bloc, en coordonnées d'écran
+	Ref<Texture2D> logo; // icône de l'application (projets sans icône dans le gestionnaire de projets)
+	// Logo de MEX (editor_brand.cpp) : symbole et mot rendus à la taille d'affichage.
+	struct BrandImage {
+		int shape = 0;
+		int width = 0;
+		int height = 0;
+		Ref<Texture2D> texture;
+	};
+	std::vector<BrandImage> brand_images;
+	void _collect_brand_images();
+	void _free_brand_images();
+	void _draw_brand_shape(ImDrawList *p_draw_list, int p_shape, const ImVec2 &p_pos, float p_width, float p_height, unsigned int p_rgb);
+	float _draw_brand_symbol(ImDrawList *p_draw_list, const ImVec2 &p_pos, float p_height); // renvoie la largeur
+	float _draw_brand_lockup(ImDrawList *p_draw_list, const ImVec2 &p_pos, float p_height); // renvoie la largeur
+	float _draw_brand_header(float p_height, bool p_stacked = false); // renvoie le bord droit du bloc, en coordonnées d'écran
 	bool settings_open = false;
 
 	void _open_file_dialog(const String &p_title, const std::vector<String> &p_extensions, bool p_save, std::function<void(const String &)> p_callback, const String &p_default = "");

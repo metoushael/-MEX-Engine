@@ -1,4 +1,9 @@
-<p align="center"><img src="branding/png/mex-banniere.png" alt="MEX — Metoushela Engine X" width="900"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/png/mex-horizontal-dark.png">
+    <img src="branding/png/mex-horizontal-light.png" alt="MEX — Metoushela Engine X" width="420">
+  </picture>
+</p>
 
 # MEX — Metoushela Engine X
 
@@ -96,7 +101,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.4.0). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.5.1). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -277,7 +282,7 @@ préférences ; le bouton *Actualiser* les recalcule.
 
 *Éditeur > Préférences...* (ou *Apparence* dans le gestionnaire de projets) règle :
 
-- le **thème** : MEX Nuit, Ardoise bleue, Graphite, Minuit, Aurore, Forêt, Clair, Contraste
+- le **thème** : MEX Nuit (indigo et orange, celui d'origine), MEX Vert (noir et vert du logo), Ardoise bleue, Graphite, Minuit, Aurore, Forêt, Clair, Contraste
   élevé, ou Personnalisé (couleur de fond et couleur d'accent au choix) ;
 - l'**échelle de l'interface** (automatique d'après l'écran, ou de 75 % à 300 %), la taille
   du texte et l'arrondi des angles ;
@@ -531,7 +536,7 @@ ressources `.res`, scripts `.mx`, archives de jeu `.pck`.
 | `main/` | Point d'entrée et boucle de jeu |
 | `cmake/` | Fichier de compilation croisée vers Windows |
 | `platform/` | Ressources propres à chaque système : icône et version de l'exécutable Windows, lanceur Linux |
-| `branding/` | Identité visuelle : logos, icônes, charte graphique et le programme qui les génère |
+| `branding/` | Identité visuelle : pack de logo, guide d'usage, icônes de l'application et le programme qui les dérive des SVG |
 | `.github/workflows/` | Compilation et publication automatiques (GitHub Actions) |
 | `projects/` | Projets d'exemple |
 | `thirdparty/` | Bibliothèques tierces |
@@ -583,7 +588,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.4.0"
+git commit -m "MEX 0.5.1"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -593,7 +598,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Archives `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.4.0**. Archives `mex-v0.4.0-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.5.1**. Archives `mex-v0.5.1-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -603,22 +608,22 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.4.0
-  git push origin v0.4.0
+  git tag v0.5.1
+  git push origin v0.5.1
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.4.0` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.5.1` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.4.0-windows-x86_64.zip`
-- `mex-v0.4.0-linux-x86_64.tar.gz`
-- `mex-v0.4.0-macos-universal.tar.gz`
+- `mex-v0.5.1-windows-x86_64.zip`
+- `mex-v0.5.1-linux-x86_64.tar.gz`
+- `mex-v0.5.1-macos-universal.tar.gz`
 - `SHA256SUMS.txt`, les empreintes des archives.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.4.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.5.1-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 archives sont tout de même publiées et la note de version le signale.
 
 **Si rien n'apparaît dans Releases :**
@@ -675,20 +680,49 @@ MEX_TEST_SCRIPT=essai.txt SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 ## Identité visuelle
 
-<p align="center"><img src="branding/planche.png" alt="Planche de marque de MEX" width="820"></p>
+<p align="center"><img src="branding/png/mex-stacked-dark.png" alt="Logo de MEX, version empilée" width="220"></p>
 
-Le logo réunit le **M** de Metoushela et le **X** du moteur. Le dossier `branding/` contient
-les logos vectoriels (fond sombre, fond clair, monochrome), l'icône de 16 à 1024 px, les
-fichiers `mex.ico` et `mex.icns`, et la [charte graphique](branding/CHARTE.md) : couleurs,
-typographie, zone de protection, tailles minimales, usages à éviter.
+Le logo de MEX est une manette dont le haut dessine un **M**. Le dossier `branding/` contient
+le pack de logo tel qu'il a été dessiné :
 
-Tout est dessiné par le programme `branding/generer_marque.py` ; il met aussi à jour l'icône
-embarquée dans le moteur (`main/mex_logo.gen.h`) et celle de l'exécutable Windows
-(`platform/windows/mex.ico`).
+| Dossier ou fichier | Contenu |
+| --- | --- |
+| `branding/GUIDE.md` | Guide d'usage : versions, couleurs, zone de protection, tailles minimales, usages à éviter |
+| `branding/svg/` | Fichiers maîtres : logo horizontal, logo empilé, symbole, mot MEX, icône d'application |
+| `branding/png/` | Les mêmes en PNG |
+| `branding/web/` | Favicon, icônes de site et de PWA |
+| `branding/mex-presentation.html` | Présentation du logo |
+| `branding/app/`, `branding/mex.ico`, `branding/mex.icns` | Icône de l'application de 16 à 1024 px, pour Windows et macOS |
 
-L'éditeur et les jeux affichent l'icône de MEX dans leur fenêtre. Pour donner sa propre icône à
-un jeu, indiquez une image du projet dans *Projet → Paramètres du projet → Icône de la fenêtre*
-(paramètre `application/icon` de `project.mex`, par exemple `res://icone.png`).
+| Couleur | Valeur | Usage |
+| --- | --- | --- |
+| Vert Mex | `#19D46A` | Symbole sur fond sombre, couleur d'accent du thème *MEX Vert* |
+| Vert profond | `#087A3A` | Symbole sur fond clair |
+| Noir Mex | `#0C110E` | Fond sombre, mot MEX sur fond clair, barres du thème *MEX Vert* |
+| Blanc cassé | `#F4F7F5` | Mot MEX sur fond sombre |
+
+Dans le logiciel :
+
+- l'icône de la fenêtre, de l'exécutable Windows et des paquets est `mex-app-icon.svg` ;
+- la barre du haut de l'éditeur porte le symbole, dans sa version « petites tailles » ;
+- le gestionnaire de projets et la fenêtre *À propos* portent le logo horizontal ;
+- le symbole et le mot MEX ne sont pas des images figées : l'éditeur les trace à la taille
+  exacte de l'écran à partir des SVG, et choisit leurs couleurs d'après le fond, comme le
+  demande le guide (vert vif et blanc cassé sur fond sombre, vert profond et noir sur fond
+  clair) ;
+- le thème d'origine reste *MEX Nuit*, indigo et orange ; le thème *MEX Vert* reprend le noir
+  et le vert du logo.
+
+Le programme `branding/generer_icones.py` ne redessine rien : il lit les SVG du pack et en
+tire l'icône aux tailles voulues, `mex.ico`, `mex.icns`, l'icône embarquée dans le moteur
+(`main/mex_logo.gen.h`), celle de l'exécutable Windows (`platform/windows/mex.ico`) et les
+tracés utilisés par l'éditeur (`editor/mex_brand.gen.h`). Après avoir modifié un SVG,
+relancez-le puis recompilez. Il demande Pillow et `rsvg-convert` (paquet `librsvg2-bin`).
+
+Les jeux affichent l'icône de MEX dans leur fenêtre tant qu'ils n'ont pas la leur. Pour donner
+sa propre icône à un jeu, indiquez une image du projet dans *Projet → Paramètres du projet →
+Icône de la fenêtre* (paramètre `application/icon` de `project.mex`, par exemple
+`res://icone.png`).
 
 Sous Linux, pour ajouter MEX au menu des applications :
 
@@ -697,7 +731,7 @@ install -Dm644 mex.png ~/.local/share/icons/hicolor/256x256/apps/mex.png
 install -Dm644 mex.desktop ~/.local/share/applications/mex.desktop   # adaptez la ligne Exec au chemin de mex
 ```
 
-Depuis les sources, ces deux fichiers sont `branding/png/mex-icone-256.png` et
+Depuis les sources, ces deux fichiers sont `branding/app/mex-icone-256.png` et
 `platform/linux/mex.desktop`.
 
 ## Licences des bibliothèques tierces
@@ -709,4 +743,3 @@ Depuis les sources, ces deux fichiers sont `branding/png/mex-icone-256.png` et
 | [stb_image, stb_truetype](https://github.com/nothings/stb) | Domaine public ou MIT, voir `thirdparty/stb/LICENSE.txt` |
 | Police Roboto Medium (Christian Robertson) | Apache 2.0, voir `thirdparty/fonts/LICENSE.txt` |
 | Icônes [Lucide](https://lucide.dev) 0.469, celles de l'éditeur | ISC, voir `thirdparty/lucide/LICENSE.txt` |
-| Police Poppins (Indian Type Foundry), utilisée pour dessiner le logo | SIL Open Font License 1.1, voir `branding/polices/OFL.txt` |

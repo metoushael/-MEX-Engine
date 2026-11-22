@@ -35,7 +35,11 @@ const char *THEME_CUSTOM = "Personnalisé";
 
 const std::vector<ThemeDef> &_themes() {
 	static const std::vector<ThemeDef> themes = {
-		{ "MEX Nuit", "Indigo et orange de la marque", _rgb(0x1A1C30), _rgb(0xFF7A00), false },
+		// Le premier thème est celui d'origine.
+		{ "MEX Nuit", "Indigo et orange", _rgb(0x1A1C30), _rgb(0xFF7A00), false },
+		// Couleurs du logo (branding/GUIDE.md) : accent Vert Mex ; le fond est choisi pour que
+		// sa teinte la plus sombre, celle des barres, soit le Noir Mex #0C110E.
+		{ "MEX Vert", "Noir et vert du logo", _rgb(0x111814), _rgb(0x19D46A), false },
 		{ "Ardoise bleue", "Gris-bleu doux, façon Godot", _rgb(0x363D4A), _rgb(0x70BAFA), false },
 		{ "Graphite", "Gris neutre, couleurs fidèles", _rgb(0x262626), _rgb(0xFF8A1F), false },
 		{ "Minuit", "Noir profond et bleu vif", _rgb(0x101014), _rgb(0x4CC2FF), false },

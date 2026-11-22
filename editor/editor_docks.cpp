@@ -1112,7 +1112,7 @@ void EditorNode::_draw_about() {
 	}
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	if (ImGui::BeginPopupModal("À propos###About", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-		_draw_brand_header(72.0f);
+		_draw_brand_header(ES(72), true);
 		ImGui::TextUnformatted("Moteur de jeu 2D et 3D avec éditeur intégré, créé par Metoushela.");
 		ImGui::TextDisabled("Son architecture s'inspire de celle de Godot Engine.");
 		ImGui::Spacing();
@@ -1122,7 +1122,6 @@ void EditorNode::_draw_about() {
 		ImGui::BulletText("stb_image, stb_truetype (domaine public / MIT)");
 		ImGui::BulletText("Police Roboto (Apache 2.0)");
 		ImGui::BulletText("Icônes Lucide (ISC)");
-		ImGui::BulletText("Police Poppins, tracés du logo (SIL OFL 1.1)");
 		ImGui::Spacing();
 		if (ImGui::Button("Fermer", ImVec2(ES(120), 0))) {
 			ImGui::CloseCurrentPopup();
