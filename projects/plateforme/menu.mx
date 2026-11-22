@@ -1,0 +1,18 @@
+extends Control
+# Menu principal : champ de saisie et boutons placés par des conteneurs.
+
+@onready var champ_nom = $Centre/Boite/Nom
+
+func _ready():
+	# Le nom est gardé dans les paramètres du projet pour être relu par la scène de jeu.
+	champ_nom.text = ProjectSettings.get_setting("jeu/nom_joueur", "")
+
+func _sur_jouer():
+	ProjectSettings.set_setting("jeu/nom_joueur", champ_nom.text)
+	get_tree().change_scene_to_file("res://principal.scn")
+
+func _sur_nom_valide(_texte):
+	_sur_jouer()
+
+func _sur_quitter():
+	get_tree().quit()

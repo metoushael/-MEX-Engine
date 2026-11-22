@@ -1,0 +1,30 @@
+extends Node3D
+# Scène principale : compte les pièces et met à jour l'affichage 2D posé sur la vue 3D.
+
+var score = 0
+var total = 0
+@onready var etiquette = $HUD/Score
+
+func _ready():
+	var pieces = get_tree().get_nodes_in_group("pieces")
+	total = pieces.size()
+	for piece in pieces:
+		piece.ramassee.connect(_sur_piece_ramassee)
+	_actualiser()
+
+func _process(_delta):
+	if Input.is_action_just_pressed("recommencer"):
+		get_tree().reload_current_scene()
+	if Input.is_action_just_pressed("quitter"):
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		get_tree().quit()
+
+func _sur_piece_ramassee():
+	score += 1
+	_actualiser()
+
+func _actualiser():
+	if score >= total:
+		etiquette.text = "Bravo ! %d / %d pièces" % [score, total]
+	else:
+		etiquette.text = "Pièces : %d / %d" % [score, total]

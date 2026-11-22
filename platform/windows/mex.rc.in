@@ -1,0 +1,34 @@
+// Ressources Windows de MEX : icône de l'exécutable et informations de version
+// (visibles dans l'Explorateur, la barre des tâches et les propriétés du fichier).
+// CMake remplit les valeurs entre arobases (configure_file) et écrit mex.rc dans le dossier de compilation.
+#include <winver.h>
+
+// Le premier groupe d'icônes du fichier est celui que l'Explorateur affiche.
+1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/platform/windows/mex.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION @MEX_RC_MAJOR@, @MEX_RC_MINOR@, @MEX_RC_PATCH@, 0
+PRODUCTVERSION @MEX_RC_MAJOR@, @MEX_RC_MINOR@, @MEX_RC_PATCH@, 0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+	BLOCK "StringFileInfo"
+	BEGIN
+		BLOCK "040C04B0" // français, Unicode
+		BEGIN
+			VALUE "CompanyName", "Metoushela"
+			VALUE "FileDescription", "MEX - Metoushela Engine X"
+			VALUE "FileVersion", "@MEX_VERSION@"
+			VALUE "InternalName", "mex"
+			VALUE "ProductName", "MEX - Metoushela Engine X"
+			VALUE "ProductVersion", "@MEX_VERSION@"
+		END
+	END
+	BLOCK "VarFileInfo"
+	BEGIN
+		VALUE "Translation", 0x040C, 0x04B0
+	END
+END

@@ -1,0 +1,20 @@
+; Projet d'exemple MEX : petit jeu de plateforme.
+
+[application]
+name = "Plateforme"
+main_scene = "res://menu.scn"
+
+[display]
+width = 960
+height = 540
+
+[rendering]
+clear_color = Color(0.45, 0.72, 0.93, 1)
+texture_filter = "nearest"
+
+[input]
+gauche = ["Left", "A"]
+droite = ["Right", "D"]
+sauter = ["Space", "Up", "W"]
+recommencer = ["R"]
+menu = ["Escape"]

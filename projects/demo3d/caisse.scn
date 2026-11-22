@@ -1,0 +1,21 @@
+[mex_scene format=1]
+
+[ext_resource type="Texture2D" path="res://caisse.png" id="1"]
+
+[sub_resource type="BoxMesh" id="1"]
+
+[sub_resource type="StandardMaterial3D" id="2"]
+albedo_texture = ExtResource("1")
+roughness = 0.8
+
+[sub_resource type="BoxShape3D" id="3"]
+
+[node name="Caisse" type="RigidBody3D"]
+mass = 1.5
+
+[node name="Maillage" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("2")
+
+[node name="Forme" type="CollisionShape3D" parent="."]
+shape = SubResource("3")

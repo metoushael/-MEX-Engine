@@ -1,0 +1,653 @@
+extends Node2D
+# Essais automatiques : chaque fonction essai_* vérifie une partie du moteur.
+
+var reussis = 0
+var echecs = 0
+var images = 0
+var particules
+var lumiere
+var lecteur_bus
+var ui = {}
+var clics = 0
+var valeurs = 0
+var choix = -1
+var fins = 0
+var tween_libre
+var reseau = {}
+var bouton_traduit
+var largeur_fr = 0
+var cible_libre
+
+func verifier(nom, condition):
+	if condition:
+		reussis += 1
+		print("OK     ", nom)
+	else:
+		echecs += 1
+		print("ECHEC  ", nom)
+
+func _ready():
+	essai_audio()
+	essai_audio_3d()
+	essai_gltf()
+	essai_squelette()
+	essai_maths()
+	essai_particules()
+	essai_shader()
+	essai_lumieres()
+	essai_bus()
+	essai_interface()
+	essai_tween()
+	essai_traductions()
+	essai_chemins()
+	essai_mesures()
+	essai_reseau()
+
+func essai_audio():
+	var wav = load("res://bip.wav")
+	var ogg = load("res://bip.ogg")
+	var mp3 = load("res://bip.mp3")
+	verifier("audio : WAV chargé", wav != null and abs(wav.get_length() - 0.4) < 0.02)
+	verifier("audio : Ogg Vorbis chargé", ogg != null and ogg is AudioStreamOggVorbis and abs(ogg.get_length() - 0.4) < 0.05)
+	verifier("audio : MP3 chargé", mp3 != null and mp3 is AudioStreamMP3 and abs(mp3.get_length() - 0.4) < 0.1)
+	var lecteur = AudioStreamPlayer.new()
+	add_child(lecteur)
+	lecteur.stream = ogg
+	lecteur.play()
+	verifier("audio : lecture d'un Ogg", lecteur.is_playing())
+
+func essai_audio_3d():
+	var auditeur = AudioListener3D.new()
+	add_child(auditeur)
+	auditeur.make_current()
+	var son = AudioStreamPlayer3D.new()
+	add_child(son)
+	verifier("audio 3D : auditeur courant", auditeur.is_current())
+	son.position = Vector3(0, 0, -10)
+	son.update_output()
+	verifier("audio 3D : en face, centré", abs(son.get_output_pan()) < 0.001 and abs(son.get_output_gain() - 0.7071) < 0.01)
+	son.position = Vector3(10, 0, 0)
+	son.update_output()
+	var a_droite = son.get_output_pan()
+	son.position = Vector3(-10, 0, 0)
+	son.update_output()
+	verifier("audio 3D : balance droite et gauche", a_droite > 0.5 and son.get_output_pan() < -0.5)
+	son.position = Vector3(0, 0, -20)
+	son.update_output()
+	verifier("audio 3D : moitié du volume à deux unités", abs(son.get_output_gain() - 0.3536) < 0.01)
+	son.attenuation_model = 1
+	son.update_output()
+	verifier("audio 3D : inverse du carré", abs(son.get_output_gain() - 0.1768) < 0.01)
+	son.attenuation_model = 3
+	son.update_output()
+	verifier("audio 3D : sans atténuation", abs(son.get_output_gain() - 0.7071) < 0.01)
+	son.max_distance = 15.0
+	son.update_output()
+	verifier("audio 3D : silence hors de portée", son.get_output_gain() == 0.0)
+	son.max_distance = 0.0
+	son.attenuation_model = 0
+	son.position = Vector3(0, 0, -1)
+	son.update_output()
+	verifier("audio 3D : volume plafonné à max_db", abs(son.get_output_gain() - 0.7071 * 1.4125) < 0.02)
+	son.doppler_tracking = 1
+	son.position = Vector3(0, 0, -10)
+	var approche = son.get_pitch_for_velocity(Vector3(0, 0, 34.3))
+	var eloigne = son.get_pitch_for_velocity(Vector3(0, 0, -34.3))
+	verifier("audio 3D : effet Doppler", abs(approche - 1.1111) < 0.01 and abs(eloigne - 0.9091) < 0.01)
+	son.doppler_tracking = 0
+	son.emission_angle_enabled = true
+	son.update_output()
+	var de_dos = son.get_output_gain() # sans rotation, le son est émis vers -Z : dos à l'auditeur
+	son.rotation = Vector3(0, 3.14159, 0)
+	son.update_output()
+	verifier("audio 3D : cône d'émission", abs(de_dos / son.get_output_gain() - 0.2512) < 0.01)
+	auditeur.clear_current()
+	son.update_output()
+	verifier("audio 3D : sans auditeur ni caméra, silence", son.get_output_gain() == 0.0)
+	son.queue_free()
+	auditeur.queue_free()
+
+func essai_gltf():
+	var binaire = load("res://carre.glb")
+	verifier("glTF : fichier .glb chargé", binaire != null and binaire is ArrayMesh)
+	if binaire != null:
+		verifier("glTF : sommets et triangles", binaire.get_vertex_count() == 8 and binaire.get_triangle_count() == 4)
+		var taille = binaire.get_aabb_size()
+		verifier("glTF : transformations des noeuds", abs(taille.x - 2.0) < 0.001 and abs(taille.y - 3.0) < 0.001 and abs(taille.z - 5.0) < 0.001)
+	var texte = load("res://carre.gltf")
+	verifier("glTF : fichier .gltf (données en base64)", texte != null and texte.get_triangle_count() == 4)
+	var instance = MeshInstance3D.new()
+	instance.mesh = binaire
+	add_child(instance)
+	instance.queue_free()
+
+func proche(a, b):
+	return (a - b).length() < 0.001
+
+func essai_squelette():
+	var squelette = Skeleton3D.new()
+	add_child(squelette)
+	squelette.source = "res://bras.glb"
+	verifier("squelette : os lus dans le .glb", squelette.get_bone_count() == 4 and squelette.find_bone("AvantBras") == 1)
+	var bout = squelette.find_bone("Bout")
+	verifier("squelette : hiérarchie", squelette.get_bone_parent(bout) == 1 and squelette.get_bone_parent(0) == -1)
+	verifier("squelette : pose de repos", proche(squelette.get_bone_global_position(bout), Vector3(0, 2, 0)))
+	verifier("squelette : animation lue", squelette.get_animation_list() == ["Plier"] and abs(squelette.get_animation_length("Plier") - 1.0) < 0.001)
+	squelette.loop = false
+	squelette.play("Plier")
+	squelette.seek(1.0)
+	verifier("squelette : fin de l'animation", proche(squelette.get_bone_global_position(bout), Vector3(-1, 1, 0)))
+	squelette.seek(0.5)
+	verifier("squelette : interpolation des rotations", proche(squelette.get_bone_global_position(bout), Vector3(-0.70711, 1.70711, 0)))
+	squelette.stop()
+	squelette.reset_bone_poses()
+	squelette.set_bone_pose_rotation(1, Vector3(1.5708, 0, 0))
+	verifier("squelette : pose réglée par script", proche(squelette.get_bone_global_position(bout), Vector3(0, 1, 1)))
+	squelette.set_bone_pose_position(0, Vector3(2, 0, 0))
+	squelette.set_bone_pose_scale(0, Vector3(2, 2, 2))
+	verifier("squelette : position et échelle héritées", proche(squelette.get_bone_global_position(bout), Vector3(2, 2, 2)))
+	squelette.reset_bone_poses()
+	var maillage = load("res://bras.glb")
+	verifier("squelette : maillage avec peau", maillage != null and maillage.get_vertex_count() == 20 and proche(maillage.get_aabb_size(), Vector3(0.5, 2, 0.5)))
+	var instance = MeshInstance3D.new()
+	instance.mesh = maillage
+	squelette.add_child(instance)
+	var fait_main = Skeleton3D.new()
+	var a = fait_main.add_bone("A")
+	var b = fait_main.add_bone("B")
+	fait_main.set_bone_parent(b, a)
+	fait_main.set_bone_rest(b, Vector3(0, 3, 0), Vector3(0, 0, 0), Vector3(1, 1, 1))
+	fait_main.set_bone_pose_rotation(a, Vector3(0, 0, -1.5708))
+	verifier("squelette : os créés par script", proche(fait_main.get_bone_global_position(b), Vector3(3, 0, 0)))
+	fait_main.set_bone_parent(a, b)
+	verifier("squelette : boucle de parents refusée", fait_main.get_bone_parent(a) == -1)
+	fait_main.free()
+	squelette.queue_free()
+
+func essai_maths():
+	verifier("maths : ease", abs(ease(0.5, 2.0) - 0.25) < 0.0001 and abs(ease(0.5, 0.5) - 0.75) < 0.0001 and abs(ease(0.25, -2.0) - 0.125) < 0.0001)
+	verifier("maths : angle_difference", abs(angle_difference(0.1, 6.2) + 0.18319) < 0.0001)
+	verifier("maths : rotate_toward", abs(rotate_toward(0.0, 1.0, 0.25) - 0.25) < 0.0001 and abs(rotate_toward(0.0, 1.0, 5.0) - 1.0) < 0.0001)
+	verifier("maths : cubic_interpolate", abs(cubic_interpolate(0.0, 1.0, -1.0, 2.0, 0.5) - 0.5) < 0.0001)
+	verifier("maths : bezier_interpolate", abs(bezier_interpolate(0.0, 0.0, 1.0, 1.0, 0.25) - 0.15625) < 0.0001)
+	verifier("maths : décibels", abs(db_to_linear(-6.0) - 0.50119) < 0.0001 and abs(linear_to_db(0.5) + 6.0206) < 0.0001)
+	verifier("maths : posmod et nearest_po2", posmod(-7, 3) == 2 and posmod(7, -3) == -2 and nearest_po2(100) == 128 and nearest_po2(64) == 64)
+	verifier("maths : is_inf, is_finite, tanh", is_inf(1.0 / 0.0) and is_finite(3.0) and not is_finite(1.0 / 0.0) and abs(tanh(1.0) - 0.76159) < 0.0001)
+
+func essai_particules():
+	particules = CPUParticles2D.new()
+	particules.position = Vector2(120, 250)
+	particules.amount = 40
+	particules.lifetime = 0.8
+	particules.direction = Vector2(0, -1)
+	particules.spread = 25
+	particules.initial_velocity_min = 120
+	particules.initial_velocity_max = 200
+	particules.gravity = Vector2(0, 300)
+	particules.color = Color(1, 0.8, 0.2, 1)
+	particules.color_end = Color(1, 0.1, 0, 0)
+	add_child(particules)
+
+func essai_shader():
+	var carre = ColorRect.new()
+	carre.position = Vector2(260, 40)
+	carre.size = Vector2(120, 120)
+	carre.color = Color(0, 0, 1, 1)
+	var materiau = ShaderMaterial.new()
+	materiau.shader = load("res://rouge.shader")
+	materiau.set_shader_parameter("force", 1.0)
+	carre.material = materiau
+	add_child(carre)
+	verifier("shader : compilation", materiau.get_shader_error() == "")
+	var faux = Shader.new()
+	faux.code = "void fragment() { COLOR = inconnu; }"
+	var casse = ShaderMaterial.new()
+	casse.shader = faux
+	verifier("shader : erreur signalée", casse.get_shader_error() != "")
+
+func essai_lumieres():
+	var nuit = CanvasModulate.new()
+	nuit.color = Color(0.25, 0.25, 0.35, 1)
+	add_child(nuit)
+	lumiere = PointLight2D.new()
+	lumiere.position = Vector2(480, 200)
+	lumiere.texture_scale = 1.2
+	lumiere.shadow_enabled = true
+	add_child(lumiere)
+	var mur = LightOccluder2D.new()
+	mur.position = Vector2(540, 200)
+	mur.polygon = [Vector2(-10, -30), Vector2(10, -30), Vector2(10, 30), Vector2(-10, 30)]
+	add_child(mur)
+
+func essai_bus():
+	AudioServer.add_bus("Effets")
+	var bus = AudioServer.get_bus_index("Effets")
+	verifier("bus : création", bus == 1 and AudioServer.get_bus_count() == 2 and AudioServer.get_bus_send(bus) == "Master")
+	AudioServer.set_bus_volume_db(bus, -6.0)
+	var echo = AudioEffectDelay.new()
+	echo.delay_ms = 120
+	AudioServer.add_bus_effect(bus, echo)
+	AudioServer.add_bus_effect(bus, AudioEffectReverb.new())
+	var filtre = AudioEffectLowPassFilter.new()
+	filtre.cutoff_hz = 800
+	AudioServer.add_bus_effect(bus, filtre)
+	AudioServer.add_bus_effect(0, AudioEffectLimiter.new())
+	verifier("bus : effets", AudioServer.get_bus_effect_count(bus) == 3 and AudioServer.get_bus_effect(bus, 0) == echo)
+	lecteur_bus = AudioStreamPlayer2D.new()
+	lecteur_bus.stream = load("res://bip.wav")
+	lecteur_bus.bus = "Effets"
+	lecteur_bus.pitch_scale = 1.5
+	lecteur_bus.loop = true
+	lecteur_bus.position = Vector2(500, 180)
+	add_child(lecteur_bus)
+	lecteur_bus.play()
+
+func touche(code):
+	var e = InputEventKey.new()
+	e.keycode = code
+	e.pressed = true
+	get_tree().push_input(e)
+	var r = InputEventKey.new()
+	r.keycode = code
+	r.pressed = false
+	get_tree().push_input(r)
+
+func clic(position):
+	var e = InputEventMouseButton.new()
+	e.position = position
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = true
+	get_tree().push_input(e)
+	var r = InputEventMouseButton.new()
+	r.position = position
+	r.button_index = MOUSE_BUTTON_LEFT
+	r.pressed = false
+	get_tree().push_input(r)
+
+func _sur_clic():
+	clics += 1
+
+func _sur_valeur(v):
+	valeurs += 1
+
+func _sur_choix(i):
+	choix = i
+
+func essai_interface():
+	var calque = CanvasLayer.new()
+	add_child(calque)
+	var racine = Control.new()
+	racine.position = Vector2(8, 150)
+	racine.size = Vector2(300, 200)
+	calque.add_child(racine)
+	ui.racine = racine
+
+	# Thème : appliqué au contrôle et à ses descendants.
+	var theme = Theme.new()
+	theme.set_color("font_color", "Label", Color(1, 0, 0))
+	theme.set_color("focus_color", "Control", Color(1, 1, 0))
+	theme.set_font_size("font_size", "Button", 12)
+	racine.theme = theme
+	var etiquette = Label.new()
+	etiquette.text = "Thème"
+	racine.add_child(etiquette)
+	ui.etiquette = etiquette
+	verifier("interface : couleur du thème", etiquette.get_theme_color("font_color", Color(1, 1, 1)) == Color(1, 0, 0))
+	verifier("interface : thème hérité de la classe de base", etiquette.get_theme_color("focus_color", Color(0, 0, 0)) == Color(1, 1, 0))
+	verifier("interface : valeur propre sans entrée de thème", etiquette.get_theme_color("absente", Color(0, 1, 0)) == Color(0, 1, 0))
+
+	# Focus et navigation au clavier.
+	var boite = VBoxContainer.new()
+	boite.position = Vector2(0, 24)
+	racine.add_child(boite)
+	ui.boutons = []
+	for i in range(3):
+		var b = Button.new()
+		b.text = "Bouton " + str(i)
+		b.pressed.connect(_sur_clic)
+		boite.add_child(b)
+		ui.boutons.push_back(b)
+	ui.boutons[0].grab_focus()
+	verifier("interface : grab_focus", ui.boutons[0].has_focus() and not ui.boutons[1].has_focus())
+
+	# Défilement : dix boutons dans une zone qui n'en montre que trois.
+	var defilement = ScrollContainer.new()
+	defilement.position = Vector2(110, 24)
+	defilement.size = Vector2(110, 70)
+	racine.add_child(defilement)
+	var liste = VBoxContainer.new()
+	defilement.add_child(liste)
+	ui.defilement = defilement
+	ui.lignes = []
+	for i in range(10):
+		var b = Button.new()
+		b.text = "Ligne " + str(i)
+		b.focus_mode = 0
+		b.pressed.connect(_sur_clic)
+		liste.add_child(b)
+		ui.lignes.push_back(b)
+
+	var case = CheckBox.new()
+	case.text = "Option"
+	case.position = Vector2(230, 24)
+	case.focus_mode = 0
+	racine.add_child(case)
+	ui.case = case
+
+	var curseur = HSlider.new()
+	curseur.position = Vector2(230, 60)
+	curseur.size = Vector2(100, 16)
+	curseur.step = 5
+	curseur.focus_mode = 0
+	curseur.value_changed.connect(_sur_valeur)
+	racine.add_child(curseur)
+	ui.curseur = curseur
+	curseur.value = 150
+	verifier("interface : curseur borné", curseur.value == 100 and valeurs == 1)
+	curseur.value = 42
+	verifier("interface : curseur arrondi au pas", curseur.value == 40)
+
+	var deroulant = OptionButton.new()
+	deroulant.position = Vector2(340, 24)
+	deroulant.size = Vector2(100, 36)
+	deroulant.focus_mode = 0
+	deroulant.add_item("Facile")
+	deroulant.add_item("Normal")
+	deroulant.add_item("Difficile")
+	deroulant.item_selected.connect(_sur_choix)
+	racine.add_child(deroulant)
+	ui.deroulant = deroulant
+	verifier("interface : liste déroulante", deroulant.get_item_count() == 3 and deroulant.selected == 0)
+
+	var grille = GridContainer.new()
+	grille.columns = 2
+	grille.position = Vector2(340, 110)
+	racine.add_child(grille)
+	ui.cases = []
+	for i in range(4):
+		var c = ColorRect.new()
+		c.custom_minimum_size = Vector2(20, 10 + i * 2)
+		c.color = Color(0.2 + i * 0.2, 0.6, 0.3)
+		grille.add_child(c)
+		ui.cases.push_back(c)
+	ui.grille = grille
+
+	var onglets = TabContainer.new()
+	onglets.position = Vector2(450, 24)
+	onglets.size = Vector2(170, 90)
+	racine.add_child(onglets)
+	var page1 = Label.new()
+	page1.name = "Son"
+	page1.text = "Page du son"
+	onglets.add_child(page1)
+	var page2 = Label.new()
+	page2.name = "Image"
+	page2.text = "Page de l'image"
+	onglets.add_child(page2)
+	ui.onglets = onglets
+	ui.pages = [page1, page2]
+
+	var elements = ItemList.new()
+	elements.position = Vector2(450, 120)
+	elements.size = Vector2(170, 60)
+	elements.focus_mode = 0
+	for i in range(8):
+		elements.add_item("Élément " + str(i))
+	racine.add_child(elements)
+	ui.elements = elements
+
+func essai_interface_suite():
+	var b = ui.boutons
+	touche(KEY_TAB)
+	verifier("interface : Tab passe au contrôle suivant", b[1].has_focus())
+	touche(KEY_DOWN)
+	verifier("interface : flèche vers le voisin du bas", b[2].has_focus())
+	touche(KEY_UP)
+	touche(KEY_UP)
+	verifier("interface : flèche vers le voisin du haut", b[0].has_focus())
+	clics = 0
+	touche(KEY_ENTER)
+	verifier("interface : Entrée active le bouton qui a le focus", clics == 1)
+	clic(b[2].global_position + b[2].size * 0.5)
+	verifier("interface : clic sur un bouton", clics == 2 and b[2].has_focus())
+
+	# Zone de défilement.
+	var d = ui.defilement
+	var lignes = ui.lignes
+	verifier("interface : contenu plus haut que la zone", lignes[9].global_position.y > d.global_position.y + d.size.y)
+	clics = 0
+	clic(lignes[5].global_position + lignes[5].size * 0.5)
+	verifier("interface : pas de clic sur un contrôle masqué par le découpage", clics == 0)
+	clic(lignes[0].global_position + lignes[0].size * 0.5)
+	verifier("interface : clic sur un contrôle visible de la zone", clics == 1)
+	d.scroll_vertical = 100000
+	ui.defilement_max = d.scroll_vertical
+	d.scroll_vertical = 0
+	lignes[9].focus_mode = 2
+	lignes[9].grab_focus()
+	lignes[9].focus_mode = 0
+	b[0].grab_focus()
+
+	var case = ui.case
+	clic(case.global_position + Vector2(6, case.size.y * 0.5))
+	verifier("interface : case cochée au clic", case.is_pressed())
+
+	var curseur = ui.curseur
+	clic(curseur.global_position + Vector2(curseur.size.x * 0.5, 8))
+	verifier("interface : curseur réglé à la souris", curseur.value == 50)
+
+	var deroulant = ui.deroulant
+	clic(deroulant.global_position + deroulant.size * 0.5)
+	clic(deroulant.global_position + Vector2(20, deroulant.size.y + 60))
+	verifier("interface : choix dans la liste déroulante", deroulant.selected == 2 and choix == 2)
+
+	var cases = ui.cases
+	verifier("interface : grille sur deux colonnes", cases[1].position.x >= 20 and cases[1].position.y == 0 and cases[2].position.x == 0 and cases[2].position.y >= 12 and cases[3].position.y == cases[2].position.y)
+
+	var onglets = ui.onglets
+	verifier("interface : premier onglet affiché", ui.pages[0].visible and not ui.pages[1].visible and onglets.get_tab_title(1) == "Image")
+	onglets.current_tab = 1
+	verifier("interface : changement d'onglet", ui.pages[1].visible and not ui.pages[0].visible)
+
+	var elements = ui.elements
+	clic(elements.global_position + Vector2(20, 10))
+	verifier("interface : sélection dans une liste", elements.get_selected() == 0)
+
+func _sur_fin():
+	fins += 1
+
+func essai_tween():
+	var n = Sprite2D.new()
+	add_child(n)
+	var t = create_tween()
+	t.pause()
+	t.tween_property(n, "position", Vector2(100, 0), 1.0)
+	t.parallel().tween_property(n, "modulate:a", 0.0, 0.5)
+	t.tween_property(n, "position:y", 40.0, 1.0).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(_sur_fin)
+	t.custom_step(0.5)
+	verifier("tween : propriété à mi-chemin", abs(n.position.x - 50) < 0.01 and abs(n.modulate.a) < 0.01)
+	t.custom_step(0.5)
+	verifier("tween : étape terminée", abs(n.position.x - 100) < 0.01 and n.position.y == 0)
+	t.custom_step(0.5)
+	verifier("tween : courbe quadratique sur une composante", abs(n.position.y - 10) < 0.01 and abs(n.position.x - 100) < 0.01)
+	var encore = t.custom_step(0.6)
+	verifier("tween : rappel et fin", fins == 1 and n.position.y == 40 and not encore and not t.is_valid())
+	verifier("tween : courbes BACK et BOUNCE", t.interpolate_value(0.0, 1.0, 0.5, Tween.TRANS_BACK, Tween.EASE_OUT) > 1.05 and t.interpolate_value(0.0, 1.0, 0.5, Tween.TRANS_BOUNCE, Tween.EASE_OUT) > 0.7)
+	var b = create_tween().set_loops(2)
+	b.pause()
+	b.tween_property(n, "rotation", 1.0, 1.0).from(0.0)
+	b.custom_step(1.5)
+	verifier("tween : boucle", abs(n.rotation - 0.5) < 0.01 and b.get_loops_left() == 1)
+	b.kill()
+
+	# Tween laissé à l'arbre de scène : il doit avancer seul et se terminer.
+	cible_libre = Node2D.new()
+	add_child(cible_libre)
+	tween_libre = cible_libre.create_tween()
+	tween_libre.tween_property(cible_libre, "position", Vector2(10, 0), 0.05)
+	tween_libre.tween_callback(_sur_fin)
+
+	# AnimationPlayer : courbe par piste, fondu, file d'attente.
+	var cible = Node2D.new()
+	add_child(cible)
+	var lecteur = AnimationPlayer.new()
+	cible.add_child(lecteur)
+	lecteur.add_animation("a", 1.0, false)
+	lecteur.track_insert_key("a", ".:position", 0.0, Vector2(0, 0))
+	lecteur.track_insert_key("a", ".:position", 1.0, Vector2(100, 0))
+	lecteur.set_track_easing("a", ".:position", Tween.TRANS_QUAD, Tween.EASE_IN)
+	lecteur.add_animation("b", 1.0, false)
+	lecteur.track_insert_key("b", ".:position", 0.0, Vector2(0, 0))
+	lecteur.play("a")
+	lecteur.seek(0.5)
+	verifier("animation : courbe d'accélération d'une piste", abs(cible.position.x - 25) < 0.01)
+	cible.position = Vector2(200, 0)
+	lecteur.play("b", 1.0)
+	lecteur.advance(0.5)
+	verifier("animation : fondu depuis les valeurs en cours", abs(cible.position.x - 100) < 0.5)
+	lecteur.queue("a")
+	lecteur.advance(0.6)
+	verifier("animation : file d'attente", lecteur.get_current_animation() == "a" and lecteur.is_playing())
+	lecteur.stop()
+
+func essai_traductions():
+	# textes.csv est chargé par le réglage [locale] translations du projet ; langue imposée : fr.
+	verifier("traductions : fichier CSV du projet", TranslationServer.get_loaded_locales() == ["fr", "en", "es"] and TranslationServer.get_locale() == "fr")
+	verifier("traductions : tr()", tr("BONJOUR") == "Bonjour" and tr("INCONNUE") == "INCONNUE")
+	verifier("traductions : guillemets et retours à la ligne", tr("CITATION") == "Il a dit \"oui\", puis non" and tr("DEUX_LIGNES") == "Ligne 1\nLigne 2")
+	TranslationServer.set_locale("es")
+	verifier("traductions : langue de repli pour un texte absent", tr("BONJOUR") == "Hola" and tr("QUITTER") == "Quit")
+	TranslationServer.set_locale("en_GB")
+	verifier("traductions : variante régionale", tr("BONJOUR") == "Hello")
+	TranslationServer.add_message("de", "BONJOUR", "Guten Tag")
+	TranslationServer.set_locale("de")
+	verifier("traductions : ajout par script", tr("BONJOUR") == "Guten Tag")
+	TranslationServer.set_locale("fr")
+	bouton_traduit = Button.new()
+	bouton_traduit.text = "QUITTER"
+	bouton_traduit.position = Vector2(8, 312)
+	bouton_traduit.focus_mode = 0
+	ui.racine.get_parent().add_child(bouton_traduit)
+
+func essai_chemins():
+	var g = AStar2D.new()
+	g.add_point(0, Vector2(0, 0))
+	g.add_point(1, Vector2(10, 0))
+	g.add_point(2, Vector2(20, 0))
+	g.add_point(3, Vector2(10, 30))
+	g.connect_points(0, 1)
+	g.connect_points(1, 2)
+	g.connect_points(0, 3)
+	g.connect_points(3, 2)
+	verifier("chemins : graphe, plus court chemin", g.get_id_path(0, 2) == [0, 1, 2] and g.get_point_path(0, 2) == [Vector2(0, 0), Vector2(10, 0), Vector2(20, 0)])
+	g.set_point_disabled(1)
+	verifier("chemins : point désactivé contourné", g.get_id_path(0, 2) == [0, 3, 2])
+	g.set_point_disabled(3)
+	verifier("chemins : cible inaccessible", g.get_id_path(0, 2).size() == 0 and g.get_closest_point(Vector2(11, 1)) == 2 and g.get_closest_point(Vector2(11, 1), true) == 1)
+
+	var grille = AStarGrid2D.new()
+	grille.size = Vector2(5, 5)
+	grille.cell_size = Vector2(16, 16)
+	grille.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+	# Mur vertical en x = 2, ouvert seulement en bas (y = 4).
+	grille.fill_solid_region(Rect2(2, 0, 1, 4))
+	var chemin = grille.get_id_path(Vector2(0, 0), Vector2(4, 0))
+	var traverse_mur = false
+	for c in chemin:
+		if grille.is_point_solid(c):
+			traverse_mur = true
+	verifier("chemins : grille, contournement d'un mur", chemin.size() == 13 and not traverse_mur and chemin[0] == Vector2(0, 0) and chemin[12] == Vector2(4, 0))
+	grille.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ALWAYS
+	verifier("chemins : grille, diagonales", grille.get_id_path(Vector2(0, 0), Vector2(4, 0)).size() == 9)
+	verifier("chemins : grille, positions", grille.get_point_path(Vector2(0, 0), Vector2(1, 0)) == [Vector2(0, 0), Vector2(16, 0)])
+	grille.set_point_solid(Vector2(2, 4))
+	verifier("chemins : grille, aucun passage", grille.get_id_path(Vector2(0, 0), Vector2(4, 0)).size() == 0)
+
+func boucle_couteuse():
+	var total = 0
+	for i in range(2000):
+		total += i
+	return total
+
+func essai_mesures():
+	var pile = get_stack()
+	verifier("débogage : pile d'appels", pile.size() == 2 and pile[0].function == "essai_mesures" and pile[1].function == "_ready" and pile[0].line > 0)
+	Performance.set_script_profiling(true)
+	boucle_couteuse()
+	boucle_couteuse()
+	Performance.set_script_profiling(false)
+	var profil = Performance.get_script_profile(true)
+	verifier("profileur : temps par fonction", profil.size() == 1 and profil[0].function == "boucle_couteuse" and profil[0].calls == 2 and profil[0].total_usec > 0)
+	verifier("mesures : objets et nœuds", Performance.get_monitor(Performance.OBJECT_COUNT) > 20)
+
+func essai_reseau():
+	# Tout se passe sur la machine locale ; port 0 : le système choisit un port libre.
+	var serveur = TCPServer.new()
+	verifier("réseau : serveur TCP à l'écoute", serveur.listen(0, "127.0.0.1") == OK and serveur.get_local_port() > 0)
+	var client = StreamPeerTCP.new()
+	client.connect_to_host("127.0.0.1", serveur.get_local_port())
+	reseau.serveur = serveur
+	reseau.client = client
+	var recepteur = PacketPeerUDP.new()
+	var emetteur = PacketPeerUDP.new()
+	verifier("réseau : écoute UDP", recepteur.bind(0, "127.0.0.1") == OK and recepteur.get_local_port() > 0)
+	emetteur.set_dest_address("127.0.0.1", recepteur.get_local_port())
+	emetteur.put_packet("salut")
+	emetteur.put_var({"x": 3, "liste": [1, 2.5, "trois"], "pos": Vector2(4, 5)})
+	reseau.recepteur = recepteur
+	reseau.emetteur = emetteur
+
+func essai_reseau_suite():
+	var client = reseau.client
+	client.poll()
+	verifier("réseau : connexion TCP établie", client.get_status() == StreamPeerTCP.STATUS_CONNECTED and reseau.serveur.is_connection_available())
+	var pair = reseau.serveur.take_connection()
+	reseau.pair = pair
+	client.put_var({"action": "saut", "force": 12.5})
+	client.put_var([1, 2, 3])
+	client.put_data("brut")
+	var r = reseau.recepteur
+	verifier("réseau : paquets UDP reçus", r.get_available_packet_count() == 2 and r.get_packet() == "salut" and r.get_packet_ip() == "127.0.0.1")
+	var v = r.get_var()
+	verifier("réseau : valeur transmise par UDP", v.x == 3 and v.liste == [1, 2.5, "trois"] and v.pos == Vector2(4, 5))
+
+func essai_reseau_fin():
+	var pair = reseau.pair
+	var a = pair.get_var()
+	var b = pair.get_var()
+	verifier("réseau : valeurs transmises par TCP, dans l'ordre", a.action == "saut" and a.force == 12.5 and b == [1, 2, 3] and not pair.has_var())
+	verifier("réseau : données brutes", pair.get_data() == "brut" and pair.get_available_bytes() == 0)
+	pair.put_data("réponse")
+	pair.disconnect_from_host()
+
+func _process(delta):
+	images += 1
+	if images == 30:
+		verifier("particules : émission", particules.get_active_particle_count() > 5)
+	if images == 30:
+		verifier("bus : niveau de crête mesuré", AudioServer.get_bus_peak_volume_db(1) > -60.0 and AudioServer.get_bus_peak_volume_db(0) > -60.0)
+		AudioServer.set_bus_mute(1, true)
+	if images == 38:
+		verifier("bus : muet", AudioServer.get_bus_peak_volume_db(1) < -70.0)
+		lecteur_bus.stop()
+	if images == 10:
+		essai_interface_suite()
+	if images == 12:
+		verifier("interface : le focus fait défiler la zone", ui.defilement_max > 0 and ui.defilement.scroll_vertical == ui.defilement_max)
+	if images == 20:
+		largeur_fr = bouton_traduit.get_minimum_size().x
+		TranslationServer.set_locale("en")
+	if images == 22:
+		verifier("traductions : l'interface suit la langue", tr("QUITTER") == "Quit" and bouton_traduit.get_minimum_size().x < largeur_fr)
+		verifier("mesures : nœuds, dessin, durée d'image", Performance.get_monitor(Performance.OBJECT_NODE_COUNT) > 30 and Performance.get_monitor(Performance.RENDER_2D_DRAW_CALLS) > 5 and Performance.get_monitor(Performance.TIME_PROCESS) > 0)
+	if images == 14:
+		essai_reseau_suite()
+	if images == 18:
+		essai_reseau_fin()
+	if images == 24:
+		verifier("réseau : réponse puis fermeture détectée", reseau.client.get_data() == "réponse" and reseau.client.get_status() == StreamPeerTCP.STATUS_NONE)
+	if images == 39:
+		verifier("tween : avance avec l'arbre de scène", cible_libre.position.x == 10 and fins == 2 and not tween_libre.is_valid())
+	if images == 40:
+		print("BILAN  ", reussis, " réussis, ", echecs, " échecs")

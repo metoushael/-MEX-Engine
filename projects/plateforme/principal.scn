@@ -1,0 +1,95 @@
+[mex_scene format=1]
+
+[ext_resource type="MexScript" path="res://principal.mx" id="1"]
+[ext_resource type="Texture2D" path="res://tuiles.png" id="2"]
+[ext_resource type="MexScript" path="res://joueur.mx" id="3"]
+[ext_resource type="Texture2D" path="res://joueur.png" id="4"]
+[ext_resource type="PackedScene" path="res://piece.scn" id="5"]
+
+[sub_resource type="RectangleShape2D" id="1"]
+size = Vector2(20, 30)
+
+[node name="Principal" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Niveau" type="TileMap" parent="."]
+texture = ExtResource("2")
+tile_size = Vector2(32, 32)
+non_solid_tiles = [3]
+tile_data = [-4, 8, 2, -4, 9, 2, -4, 10, 2, -4, 11, 2, -4, 12, 2, -4, 13, 2, -4, 14, 0, -4, 15, 1, -4, 16, 1, -3, 14, 0, -3, 15, 1, -3, 16, 1, -2, 14, 0, -2, 15, 1, -2, 16, 1, -1, 14, 0, -1, 15, 1, -1, 16, 1, 0, 14, 0, 0, 15, 1, 0, 16, 1, 1, 14, 0, 1, 15, 1, 1, 16, 1, 2, 13, 3, 2, 14, 0, 2, 15, 1, 2, 16, 1, 3, 14, 0, 3, 15, 1, 3, 16, 1, 4, 14, 0, 4, 15, 1, 4, 16, 1, 5, 14, 0, 5, 15, 1, 5, 16, 1, 6, 11, 2, 6, 14, 0, 6, 15, 1, 6, 16, 1, 7, 11, 2, 7, 14, 0, 7, 15, 1, 7, 16, 1, 8, 11, 2, 8, 14, 0, 8, 15, 1, 8, 16, 1, 9, 11, 2, 9, 14, 0, 9, 15, 1, 9, 16, 1, 10, 14, 0, 10, 15, 1, 10, 16, 1, 11, 13, 3, 11, 14, 0, 11, 15, 1, 11, 16, 1, 12, 8, 2, 12, 14, 0, 12, 15, 1, 12, 16, 1, 13, 8, 2, 13, 14, 0, 13, 15, 1, 13, 16, 1, 14, 8, 2, 14, 14, 0, 14, 15, 1, 14, 16, 1, 15, 8, 2, 15, 14, 0, 15, 15, 1, 15, 16, 1, 19, 14, 0, 19, 15, 1, 19, 16, 1, 20, 10, 2, 20, 14, 0, 20, 15, 1, 20, 16, 1, 21, 10, 2, 21, 14, 0, 21, 15, 1, 21, 16, 1, 22, 10, 2, 22, 14, 0, 22, 15, 1, 22, 16, 1, 23, 10, 2, 23, 14, 0, 23, 15, 1, 23, 16, 1, 24, 14, 0, 24, 15, 1, 24, 16, 1, 25, 13, 3, 25, 14, 0, 25, 15, 1, 25, 16, 1, 26, 14, 0, 26, 15, 1, 26, 16, 1, 27, 7, 2, 27, 14, 0, 27, 15, 1, 27, 16, 1, 28, 7, 2, 28, 14, 0, 28, 15, 1, 28, 16, 1, 29, 7, 2, 29, 14, 0, 29, 15, 1, 29, 16, 1, 30, 14, 0, 30, 15, 1, 30, 16, 1, 31, 14, 0, 31, 15, 1, 31, 16, 1, 32, 14, 0, 32, 15, 1, 32, 16, 1, 33, 14, 0, 33, 15, 1, 33, 16, 1, 34, 11, 2, 34, 12, 2, 34, 13, 2, 34, 14, 0, 34, 15, 1, 34, 16, 1, 35, 13, 2, 35, 14, 0, 35, 15, 1, 35, 16, 1, 36, 14, 0, 36, 15, 1, 36, 16, 1, 37, 14, 0, 37, 15, 1, 37, 16, 1, 38, 13, 3, 38, 14, 0, 38, 15, 1, 38, 16, 1, 39, 14, 0, 39, 15, 1, 39, 16, 1, 40, 14, 0, 40, 15, 1, 40, 16, 1, 41, 14, 0, 41, 15, 1, 41, 16, 1, 42, 14, 0, 42, 15, 1, 42, 16, 1, 43, 8, 2, 43, 9, 2, 43, 10, 2, 43, 11, 2, 43, 12, 2, 43, 13, 2, 43, 14, 0, 43, 15, 1, 43, 16, 1]
+
+[node name="Pieces" type="Node2D" parent="."]
+
+[node name="Piece1" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(240, 336)
+
+[node name="Piece2" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(272, 336)
+
+[node name="Piece3" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(432, 240)
+
+[node name="Piece4" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(464, 240)
+
+[node name="Piece5" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(560, 368)
+
+[node name="Piece6" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(688, 304)
+
+[node name="Piece7" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(720, 304)
+
+[node name="Piece8" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(912, 208)
+
+[node name="Piece9" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(1104, 336)
+
+[node name="Piece10" parent="Pieces" instance=ExtResource("5")]
+position = Vector2(1296, 432)
+
+[node name="Joueur" type="CharacterBody2D" parent="." groups=["joueur"]]
+position = Vector2(96, 400)
+script = ExtResource("3")
+
+[node name="Sprite" type="AnimatedSprite2D" parent="Joueur"]
+texture = ExtResource("4")
+hframes = 8
+animations = {"chute": [7, 7, 1.0, false], "course": [2, 5, 12.0, true], "repos": [0, 1, 2.0, true], "saut": [6, 6, 1.0, false]}
+animation = "repos"
+autoplay = "repos"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Joueur"]
+position = Vector2(0, 1)
+shape = SubResource("1")
+
+[node name="Camera2D" type="Camera2D" parent="Joueur"]
+offset = Vector2(0, -60)
+limit_left = -128
+limit_right = 1408
+limit_bottom = 544
+position_smoothing_enabled = true
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Fond" type="Panel" parent="HUD"]
+position = Vector2(12, 12)
+size = Vector2(200, 40)
+bg_color = Color(0, 0, 0, 0.45)
+border_color = Color(1, 1, 1, 0.25)
+border_width = 1.0
+
+[node name="Score" type="Label" parent="HUD"]
+position = Vector2(24, 20)
+size = Vector2(180, 24)
+text = "Pièces : 0"
+font_size = 20
+
+[node name="Aide" type="Label" parent="HUD"]
+position = Vector2(12, 506)
+size = Vector2(600, 24)
+text = "Flèches ou A/D : se déplacer   -   Espace : sauter   -   R : recommencer   -   Échap : menu"
+font_size = 14
+font_color = Color(1, 1, 1, 0.7)

@@ -1,0 +1,14 @@
+# Dossiers de compilation
+build/
+build-*/
+*.o
+
+# Jeux exportés depuis l'éditeur
+export/
+*.pck
+
+# Éditeurs de code
+.vs/
+.vscode/
+CMakeUserPresets.json
+.DS_Store

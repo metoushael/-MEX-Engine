@@ -1,0 +1,365 @@
+# Compile MEX pour Linux, Windows et macOS, puis publie les archives dans les
+# « Releases » du dépôt GitHub.
+#
+# - Envoi sur la branche principale (main ou master) : les archives remplacent celles
+#   de la préversion « Dernière compilation » (étiquette « continu »). Elle suit donc
+#   toujours le dernier envoi.
+# - Étiquette « v... » : une version numérotée est publiée.
+#
+#       git tag v0.5.1
+#       git push origin v0.5.1
+#
+# - Sans ligne de commande : onglet « Actions », « Compilation et publication »,
+#   bouton « Run workflow », champ « Version à publier » (par exemple v0.5.1).
+#   L'étiquette est créée par le flux de travail. Champ vide : « Dernière compilation ».
+# - Demande de fusion : compilation et essais seulement, rien n'est publié. Les archives
+#   restent quand même téléchargeables depuis la page de l'exécution (Artifacts).
+#
+# Si l'étape « Publication » échoue avec « Resource not accessible by integration » :
+# Settings > Actions > General > Workflow permissions > « Read and write permissions ».
+name: Compilation et publication
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à publier (ex. v0.5.1). Vide : « Dernière compilation »."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Décide du nom des archives et de ce qui sera publié.
+  prepare:
+    name: Préparation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      label: ${{ steps.plan.outputs.label }}
+      tag: ${{ steps.plan.outputs.tag }}
+      kind: ${{ steps.plan.outputs.kind }}
+    steps:
+      - name: Plan de publication
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          short=${GITHUB_SHA::7}
+          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$REQUESTED" ]; then
+            # Version demandée à la main : « 0.5.1 » est accepté pour « v0.5.1 ».
+            tag="v${REQUESTED#v}"
+            if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+(\.[0-9]+){1,2}(-[0-9A-Za-z.]+)?$'; then
+              echo "::error::Version invalide : « $REQUESTED ». Exemples : v0.5.1, v1.0.0-beta1."
+              exit 1
+            fi
+            kind=version; label="$tag"; version="${tag#v}"
+          elif [ "$REF_TYPE" = "tag" ]; then
+            tag="$REF_NAME"; kind=version; label="$tag"; version="${tag#v}"
+          elif [ "$EVENT" = "pull_request" ]; then
+            tag=""; kind=aucune; label="dev"; version="dev-$short"
+          else
+            tag="continu"; kind=continu; label="continu"; version="dev-$short"
+          fi
+          {
+            echo "version=$version"
+            echo "label=$label"
+            echo "tag=$tag"
+            echo "kind=$kind"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version : $version, archives : mex-$label-*, publication : $kind $tag" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (x86_64)
+            os: ubuntu-24.04
+            platform: linux-x86_64
+            shell: bash
+          - name: Windows (x86_64)
+            os: windows-latest
+            platform: windows-x86_64
+            shell: msys2 {0}
+          - name: macOS (Intel et Apple Silicon)
+            os: macos-latest
+            platform: macos-universal
+            shell: bash
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      # Version affichée par le moteur (« 0.5.1 », ou « dev-1a2b3c4 » hors version numérotée).
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PACKAGE: mex-${{ needs.prepare.outputs.label }}-${{ matrix.platform }}
+
+    steps:
+      - name: Récupération des sources
+        uses: actions/checkout@v7
+
+      # SDL2 est compilée avec le moteur (MEX_VENDORED_SDL) : libsdl2-dev n'est
+      # installé que pour ses dépendances, les en-têtes de X11, Wayland, ALSA,
+      # PulseAudio, PipeWire... dont SDL2 a besoin pour activer ces pilotes.
+      - name: Outils (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libsdl2-dev libgl-dev
+
+      - name: Outils (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            zip
+
+      - name: Compilation (Linux, Windows)
+        if: runner.os != 'macOS'
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMEX_VENDORED_SDL=ON \
+            -DMEX_STATIC_RUNTIME=ON \
+            -DMEX_VERSION="$VERSION"
+          cmake --build build
+          mkdir -p dist
+          cp build/bin/mex* dist/
+          # Retire les symboles de débogage : exécutables plus légers.
+          strip dist/mex*
+
+      # Une compilation par architecture, réunies ensuite en un seul binaire.
+      - name: Compilation (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          for arch in arm64 x86_64; do
+            cmake -S . -B "build-$arch" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES="$arch" \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+              -DMEX_VENDORED_SDL=ON \
+              -DMEX_VERSION="$VERSION"
+            cmake --build "build-$arch" --parallel 4
+          done
+          mkdir -p dist
+          for exe in mex mex-jeu; do
+            lipo -create -output "dist/$exe" "build-arm64/bin/$exe" "build-x86_64/bin/$exe"
+            codesign --force --sign - "dist/$exe"
+            lipo -info "dist/$exe"
+          done
+
+      - name: Dépendances de l'exécutable
+        run: |
+          case "$RUNNER_OS" in
+            Linux) ldd dist/mex ;;
+            macOS) otool -L dist/mex ;;
+            Windows)
+              objdump -p dist/mex.exe | grep "DLL Name" | sort -u
+              # Ni SDL2.dll ni les DLL de MinGW ne doivent être nécessaires.
+              if objdump -p dist/mex.exe | grep -Eiq "DLL Name: (SDL2|libstdc|libgcc|libwinpthread)"; then
+                echo "::error::mex.exe dépend d'une DLL qui n'est pas fournie avec Windows"
+                exit 1
+              fi
+              ;;
+          esac
+
+      # Le jeu d'exemple tourne 120 images sans écran ni carte son.
+      - name: Essai du jeu d'exemple
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          essai() {
+            echo "--- $*"
+            "$@" > essai.log 2>&1 || { cat essai.log; echo "::error::Échec de : $*"; exit 1; }
+            cat essai.log
+            if grep -q "ERREUR" essai.log; then
+              echo "::error::Le moteur a signalé une erreur : $*"
+              exit 1
+            fi
+          }
+          essai dist/mex --version
+          essai dist/mex --path projects/plateforme --quit-after 120
+          essai dist/mex-jeu --path projects/plateforme principal.scn --quit-after 120
+          # Sans écran il n'y a pas d'OpenGL : la démo 3D doit tourner quand même (scripts et
+          # physique), le moteur se contentant d'avertir que le rendu 3D est désactivé.
+          essai dist/mex-jeu --path projects/demo3d --quit-after 120
+          essai dist/mex -e --path projects/demo3d --quit-after 30
+          # Éditeur lancé hors d'un projet : page d'accueil (gestionnaire de projets).
+          mkdir -p vide
+          (cd vide && essai ../dist/mex --quit-after 30)
+
+      # Sous Linux, le rendu 3D est essayé pour de bon : serveur X virtuel et OpenGL logiciel
+      # de Mesa (llvmpipe). Les exécuteurs Windows et macOS n'offrent pas d'équivalent simple.
+      - name: Essai du rendu 3D (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0
+          export SDL_AUDIODRIVER=dummy LIBGL_ALWAYS_SOFTWARE=1
+          xvfb-run -a -s "-screen 0 1280x720x24" dist/mex-jeu --path projects/demo3d \
+            --quit-after 60 --screenshot demo3d.bmp > essai3d.log 2>&1 || { cat essai3d.log; exit 1; }
+          cat essai3d.log
+          if grep -Eq "ERREUR|OpenGL indisponible" essai3d.log; then
+            echo "::error::Le rendu 3D n'a pas fonctionné"
+            exit 1
+          fi
+          test -s demo3d.bmp
+          rm -f demo3d.bmp essai3d.log
+
+      - name: Archive
+        run: |
+          mkdir -p "$PACKAGE/licences"
+          cp dist/* "$PACKAGE/"
+          cp -r projects docs README.md "$PACKAGE/"
+          # Modèle d'export de ce système. Pour exporter vers les autres systèmes, on réunit les
+          # dossiers « templates » des trois archives à côté de l'éditeur.
+          mkdir -p "$PACKAGE/templates/${{ matrix.platform }}"
+          cp dist/mex-jeu* "$PACKAGE/templates/${{ matrix.platform }}/"
+          # Identité visuelle : guide du logo, logos et icônes (le README affiche le logo).
+          mkdir -p "$PACKAGE/branding"
+          cp -r branding/GUIDE.md branding/mex-presentation.html branding/svg branding/png branding/web branding/app branding/mex.ico branding/mex.icns "$PACKAGE/branding/"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            cp platform/linux/mex.desktop "$PACKAGE/"
+            cp branding/app/mex-icone-256.png "$PACKAGE/mex.png"
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # Lanceur du mode de compatibilité (barre de titre de Windows, rendu Direct3D).
+            cp platform/windows/mex-sans-echec.bat "$PACKAGE/"
+          fi
+          cp thirdparty/imgui/LICENSE.txt "$PACKAGE/licences/imgui.txt"
+          cp thirdparty/stb/LICENSE.txt "$PACKAGE/licences/stb.txt"
+          cp thirdparty/fonts/LICENSE.txt "$PACKAGE/licences/roboto.txt"
+          cp thirdparty/lucide/LICENSE.txt "$PACKAGE/licences/lucide.txt"
+          cp thirdparty/godot/LICENSE.txt "$PACKAGE/licences/godot.txt"
+          sdl_source=$(ls -d build*/_deps/mex_sdl2-src | head -n 1)
+          cp "$sdl_source/LICENSE.txt" "$PACKAGE/licences/sdl2.txt"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            zip -qr "$PACKAGE.zip" "$PACKAGE"
+          else
+            tar -czf "$PACKAGE.tar.gz" "$PACKAGE"
+          fi
+          ls -l "$PACKAGE" "$PACKAGE".*
+
+      - name: Envoi de l'archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PACKAGE }}
+          path: |
+            ${{ env.PACKAGE }}.zip
+            ${{ env.PACKAGE }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publication
+    needs: [prepare, build]
+    # Publie les plateformes qui ont réussi, même si une autre a échoué.
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.kind != 'aucune' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    # Deux publications de la même version ne se croisent jamais.
+    concurrency:
+      group: publication-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - name: Récupération des archives
+        uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          LABEL: ${{ needs.prepare.outputs.label }}
+          KIND: ${{ needs.prepare.outputs.kind }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          cd release
+          count=$(find . -maxdepth 1 -name 'mex-*' | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Aucune archive à publier : toutes les compilations ont échoué."
+            exit 1
+          fi
+          sha256sum mex-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+          {
+            if [ "$KIND" = "continu" ]; then
+              echo "Compilation automatique du dernier envoi sur la branche \`$GITHUB_REF_NAME\` (\`${GITHUB_SHA::7}\`, version \`$VERSION\`)."
+              echo "Elle est remplacée à chaque envoi : pour une version stable, prenez une version numérotée."
+              echo
+            fi
+            echo "## Téléchargements"
+            echo
+            echo "| Système | Fichier |"
+            echo "| --- | --- |"
+            echo "| Windows 10 ou 11 (64 bits) | \`mex-$LABEL-windows-x86_64.zip\` |"
+            echo "| Linux x86_64 (glibc 2.39 ou plus récente : Ubuntu 24.04, Debian 13, Fedora 40...) | \`mex-$LABEL-linux-x86_64.tar.gz\` |"
+            echo "| macOS 11 ou plus récent (Intel et Apple Silicon) | \`mex-$LABEL-macos-universal.tar.gz\` |"
+            echo
+            echo "Décompressez l'archive puis lancez \`mex\` (\`mex.exe\` sous Windows). Le fichier README.md de l'archive explique la suite."
+            echo
+            echo "Sous macOS, les exécutables ne sont pas signés par un développeur identifié. Après la décompression, dans le Terminal :"
+            echo
+            echo "    xattr -dr com.apple.quarantine mex-$LABEL-macos-universal"
+            if [ "$count" -lt 3 ]; then
+              echo
+              echo "> **Attention :** la compilation a échoué pour au moins un système ; son archive manque dans cette publication."
+            fi
+          } > ../notes.md
+
+          if [ "$KIND" = "continu" ]; then
+            # Préversion glissante : l'ancienne publication et son étiquette sont supprimées,
+            # puis recréées sur le commit qui vient d'être compilé.
+            gh release delete "$TAG" --cleanup-tag --yes > /dev/null 2>&1 || true
+            gh release create "$TAG" mex-* SHA256SUMS.txt \
+              --target "$GITHUB_SHA" \
+              --title "MEX - Dernière compilation" \
+              --notes-file ../notes.md \
+              --prerelease \
+              --latest=false
+          elif gh release view "$TAG" > /dev/null 2>&1; then
+            # La version existe déjà (nouvelle exécution) : ses fichiers sont remplacés.
+            gh release upload "$TAG" mex-* SHA256SUMS.txt --clobber
+          else
+            # Une étiquette comme v0.5.1-beta1 donne une préversion.
+            options=()
+            case "$TAG" in *-*) options+=(--prerelease) ;; esac
+            # --target : crée l'étiquette si elle n'existe pas encore (publication lancée à
+            # la main) ; sans effet si elle existe déjà.
+            gh release create "$TAG" mex-* SHA256SUMS.txt \
+              --target "$GITHUB_SHA" \
+              --title "MEX $TAG" \
+              --notes-file ../notes.md \
+              --generate-notes \
+              "${options[@]}"
+          fi
+          url=$(gh release view "$TAG" --json url --jq .url)
+          echo "Publié : $url" | tee -a "$GITHUB_STEP_SUMMARY"

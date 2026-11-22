@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MEX
+GenericName=Moteur de jeu
+Comment=Metoushela Engine X : moteur de jeu 2D et 3D avec éditeur intégré
+Exec=mex -e
+Icon=mex
+Terminal=false
+Categories=Development;IDE;
+StartupWMClass=mex

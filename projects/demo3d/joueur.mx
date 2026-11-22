@@ -1,0 +1,81 @@
+extends CharacterBody3D
+# Personnage à la troisième personne : déplacement relatif à la caméra, saut,
+# caméra orbitale (souris ou flèches) et lancer de balles.
+
+@export var vitesse: float = 6.0
+@export var force_saut: float = 7.0
+@export var sensibilite: float = 0.004
+@export var poussee: float = 0.6
+
+var gravite = 9.8
+var lacet = 0.0
+var tangage = -0.3
+var depart = Vector3()
+var modele_balle = preload("res://balle.scn")
+@onready var pivot = $Pivot
+@onready var camera = $Pivot/Camera
+@onready var sonde = $Pivot/Sonde
+@onready var corps = $Corps
+
+func _ready():
+	gravite = ProjectSettings.get_setting("physics/3d/gravity")
+	depart = position
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+func _input(event):
+	if event is InputEventMouseMotion:
+		lacet -= event.relative.x * sensibilite
+		tangage = clamp(tangage - event.relative.y * sensibilite, -1.2, 0.4)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == 1:
+		lancer()
+
+func _physics_process(delta):
+	# Caméra : rotation au clavier, puis recul limité par les obstacles (rayon « Sonde »).
+	lacet -= Input.get_axis("camera_gauche", "camera_droite") * 2.2 * delta
+	pivot.rotation = Vector3(tangage, lacet, 0)
+	var recul = 6.0
+	if sonde.is_colliding():
+		recul = clamp(pivot.global_position.distance_to(sonde.get_collision_point()) - 0.3, 0.8, 6.0)
+	camera.position = Vector3(0, 0, lerp(camera.position.z, recul, 0.25))
+
+	# Déplacement dans le repère de la caméra.
+	var saisie = Input.get_vector("gauche", "droite", "avancer", "reculer")
+	var avant = Vector3(-sin(lacet), 0, -cos(lacet))
+	var cote = Vector3(cos(lacet), 0, -sin(lacet))
+	var direction = cote * saisie.x - avant * saisie.y
+	velocity.x = move_toward(velocity.x, direction.x * vitesse, 40.0 * delta)
+	velocity.z = move_toward(velocity.z, direction.z * vitesse, 40.0 * delta)
+
+	if not is_on_floor():
+		velocity.y -= gravite * 2.0 * delta
+	elif Input.is_action_just_pressed("sauter"):
+		velocity.y = force_saut
+
+	if direction.length() > 0.1:
+		var cible = atan2(-direction.x, -direction.z)
+		corps.rotation = Vector3(0, lerp_angle(corps.rotation.y, cible, 0.2), 0)
+
+	move_and_slide()
+
+	# Pousse les corps rigides rencontrés.
+	for i in range(get_slide_collision_count()):
+		var contact = get_slide_collision(i)
+		var autre = contact["collider"]
+		if autre is RigidBody3D:
+			autre.apply_central_impulse(contact["normal"] * -poussee)
+
+	if Input.is_action_just_pressed("lancer"):
+		lancer()
+
+	# Tombé du monde : retour au départ.
+	if position.y < -15:
+		position = depart
+		velocity = Vector3.ZERO
+
+func lancer():
+	var balle = modele_balle.instantiate()
+	get_parent().add_child(balle)
+	var visee = camera.get_forward()
+	balle.global_position = global_position + Vector3(0, 0.6, 0) + visee * 0.9
+	balle.add_collision_exception_with(self)
+	balle.linear_velocity = visee * 16.0 + Vector3(0, 4.0, 0)
