@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 # Le nom du projet est en minuscules exprès : project(MEX) créerait une variable MEX_VERSION
 # qui masquerait l'option du même nom ci-dessous dès la deuxième configuration.
-<<<<<<< HEAD
+
 project(mex VERSION 0.8.0 LANGUAGES C CXX)
-=======
+
 project(mex VERSION 0.6.1 LANGUAGES C CXX)
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
+
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
