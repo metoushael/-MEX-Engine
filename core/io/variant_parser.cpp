@@ -302,14 +302,11 @@ VariantParser::Item VariantParser::parse_next(Stream &s, Tag &r_tag, String &r_k
 		s.pos++;
 		_skip_ws(s);
 		r_tag.name = _read_ident(s);
-<<<<<<< HEAD
 		// Noms à points, comme les sections « [preset.0.options] » de export_presets.cfg.
 		while (s.pos < s.text.size() && s.text[s.pos] == '.') {
 			s.pos++;
 			r_tag.name += "." + _read_ident(s);
 		}
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 		r_tag.fields.clear();
 		if (r_tag.name.empty()) {
 			r_err = "Nom de balise attendu après '['";

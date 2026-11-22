@@ -24,7 +24,6 @@ bool EditorNode::get_default_title_bar_preference() {
 #if defined(__APPLE__)
 	// macOS : la barre du système suit déjà l'apparence sombre, et ses boutons sont à gauche.
 	return false;
-<<<<<<< HEAD
 #elif defined(_WIN32)
 	// Windows : barre du système par défaut. Avec la barre intégrée, la fenêtre garde les styles
 	// WS_CAPTION et WS_THICKFRAME et masque son cadre (WM_NCCALCSIZE) ; certains pilotes OpenGL
@@ -32,14 +31,11 @@ bool EditorNode::get_default_title_bar_preference() {
 	// de la hauteur de ce cadre alors que la souris reste à sa place : plus aucun bouton ne
 	// répond là où il est affiché.
 	return false;
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 #else
 	return true;
 #endif
 }
 
-<<<<<<< HEAD
 // Clé de la préférence. Sous Windows, elle a changé de nom en 0.7.1 : l'ancienne valeur, laissée
 // à « vrai » par les versions précédentes, ne doit plus activer la barre intégrée toute seule.
 const char *EditorNode::get_title_bar_preference_key() {
@@ -50,8 +46,6 @@ const char *EditorNode::get_title_bar_preference_key() {
 #endif
 }
 
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 bool EditorNode::read_title_bar_preference() {
 	bool custom = get_default_title_bar_preference();
 	if (char *pref = SDL_GetPrefPath("Metoushela", "MEX")) {
@@ -60,11 +54,7 @@ bool EditorNode::read_title_bar_preference() {
 		if (FileAccess::exists(path)) {
 			ConfigFile config;
 			if (config.load(path) == OK) {
-<<<<<<< HEAD
 				custom = config.get_value("fenetre", get_title_bar_preference_key(), Variant(custom)).as_bool();
-=======
-				custom = config.get_value("fenetre", "barre_de_titre_integree", Variant(custom)).as_bool();
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 			}
 		}
 	}

@@ -4,10 +4,7 @@
 #pragma once
 
 #include "core/object/object.h"
-<<<<<<< HEAD
 #include "editor/editor_export.h"
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 #include "main/game_runner.h"
 #include "scene/resources/texture.h"
 #include "servers/display_server.h"
@@ -43,10 +40,7 @@ public:
 	static String read_render_driver_preference();
 	// Réglage d'origine : barre intégrée sous Windows et Linux, barre du système sous macOS.
 	static bool get_default_title_bar_preference();
-<<<<<<< HEAD
 	static const char *get_title_bar_preference_key();
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 
 private:
 	// --- Général -------------------------------------------------------------
@@ -616,22 +610,13 @@ private:
 
 	// --- Export du jeu ------------------------------------------------------------------------
 	bool export_open = false;
-<<<<<<< HEAD
 	std::vector<ExportPreset> export_presets; // export_presets.cfg du projet
 	int export_selected = -1;
 	bool export_loaded = false;
-=======
-	std::string export_dir;
-	std::string export_template;
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	String export_message;
 	bool export_failed = false;
 	void _draw_export_dialog();
 	// Écrit dans p_dir l'exécutable et l'archive .pck du projet.
-<<<<<<< HEAD
-=======
-	bool _export_project(const String &p_dir, const String &p_template, String &r_message);
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 
 	// --- Éditeur de script ----------------------------------------------------------------
 	String script_path;

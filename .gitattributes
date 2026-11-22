@@ -12,3 +12,9 @@
 *.pck binary
 *.ico binary
 *.icns binary
+*.glb binary
+*.ogg binary
+*.mp3 binary
+
+# Les fichiers de commandes Windows gardent leurs fins de ligne CRLF.
+*.bat text eol=crlf

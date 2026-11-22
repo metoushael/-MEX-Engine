@@ -170,7 +170,6 @@ public:
 	TorusMesh() { update_now(); }
 };
 
-<<<<<<< HEAD
 // Rattachement d'un sommet aux os d'un squelette : jusqu'à quatre os, chacun avec son poids et
 // la position / la normale du sommet exprimées dans le repère de cet os.
 struct SkinVertex {
@@ -186,12 +185,6 @@ class ArrayMesh : public Mesh {
 
 	std::vector<SkinVertex> skin; // vide : maillage sans squelette
 
-=======
-// Maillage quelconque, chargé depuis un fichier .obj ou construit par script.
-class ArrayMesh : public Mesh {
-	GDCLASS(ArrayMesh, Mesh)
-
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 protected:
 	static void _bind_methods();
 
@@ -201,7 +194,6 @@ public:
 	// normales et coordonnées UV facultatives.
 	void set_triangles(const Array &p_positions, const Array &p_normals, const Array &p_uvs);
 	Error load_obj(const String &p_text);
-<<<<<<< HEAD
 
 	// Peau : un SkinVertex par sommet, dans le même ordre.
 	void set_skin(const std::vector<SkinVertex> &p_skin) { skin = p_skin; }
@@ -209,8 +201,6 @@ public:
 	bool has_skin() const { return !skin.empty() && skin.size() == vertices.size(); }
 	// Place les sommets d'après la pose des os (transformations dans le repère du squelette).
 	static void apply_skin(const std::vector<SkinVertex> &p_skin, const std::vector<Transform3D> &p_bone_globals, std::vector<RenderingServer3D::Vertex> &r_vertices);
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 };
 
 class ResourceFormatLoaderOBJ : public ResourceFormatLoader {

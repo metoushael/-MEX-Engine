@@ -1,9 +1,6 @@
 #include "visual_3d.h"
 
-<<<<<<< HEAD
 #include "scene/3d/skeleton_3d.h"
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 #include "scene/main/scene_tree.h"
 #include "scene/resources/shape_3d.h"
 
@@ -19,17 +16,13 @@ void MeshInstance3D::_update_instance() {
 		return;
 	}
 	RS3D->instance_set_mesh(instance, mesh.is_valid() ? mesh->get_rid() : RID());
-<<<<<<< HEAD
 	_update_skin(true);
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	RS3D->instance_set_material(instance, material_override.is_valid() ? material_override->get_rid() : RID());
 	RS3D->instance_set_cast_shadows(instance, cast_shadow);
 	RS3D->instance_set_transform(instance, get_global_transform());
 	RS3D->instance_set_visible(instance, is_visible_in_tree());
 }
 
-<<<<<<< HEAD
 // Maillage avec peau placé sous un Skeleton3D : on recalcule les sommets quand la pose change
 // (calcul sur le processeur ; Godot le fait sur la carte graphique).
 void MeshInstance3D::_update_skin(bool p_force) {
@@ -60,10 +53,6 @@ void MeshInstance3D::_notification(int p_what) {
 		case NOTIFICATION_INTERNAL_PROCESS: {
 			_update_skin(false);
 		} break;
-=======
-void MeshInstance3D::_notification(int p_what) {
-	switch (p_what) {
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 		case NOTIFICATION_ENTER_TREE: {
 			if (RS3D && !instance.is_valid()) {
 				instance = RS3D->instance_create(get_tree()->get_scenario());
@@ -116,12 +105,9 @@ MeshInstance3D::~MeshInstance3D() {
 	if (RS3D && instance.is_valid()) {
 		RS3D->free_rid(instance);
 	}
-<<<<<<< HEAD
 	if (RS3D && skinned_mesh.is_valid()) {
 		RS3D->free_rid(skinned_mesh);
 	}
-=======
->>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 }
 
 void MeshInstance3D::_bind_methods() {
