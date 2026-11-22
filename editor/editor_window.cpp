@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 // ---------------------------------------------------------------------------
 // Préférence lue avant la création de la fenêtre
@@ -45,6 +46,131 @@ bool EditorNode::read_title_bar_preference() {
 		custom = SDL_strcmp(forced, "systeme") != 0 && SDL_strcmp(forced, "0") != 0;
 	}
 	return custom;
+}
+
+String EditorNode::read_render_driver_preference() {
+	String driver = "auto";
+	if (char *pref = SDL_GetPrefPath("Metoushela", "MEX")) {
+		const String path = String(pref) + "editor_settings.cfg";
+		SDL_free(pref);
+		if (FileAccess::exists(path)) {
+			ConfigFile config;
+			if (config.load(path) == OK) {
+				driver = config.get_value("affichage", "pilote_de_rendu", Variant(driver)).as_string();
+			}
+		}
+	}
+	return driver.empty() ? String("auto") : driver;
+}
+
+// ---------------------------------------------------------------------------
+// Contrôle de l'affichage et mode de compatibilité
+// ---------------------------------------------------------------------------
+// L'image dépend du pilote graphique de chaque machine : une combinaison (pilote de rendu,
+// barre de titre) jamais vue ici est soumise une fois à l'utilisateur, qui peut revenir d'un
+// clic à la combinaison la plus sûre.
+String EditorNode::_get_display_signature() const {
+	DisplayServer *display = DisplayServer::get_singleton();
+	return (display ? display->get_render_driver() : String()) + "|" + (display && display->window_is_borderless() ? "integree" : "systeme");
+}
+
+void EditorNode::_enable_compatibility_mode() {
+	DisplayServer *display = DisplayServer::get_singleton();
+	const String safe_driver = DisplayServer::get_compatible_render_driver();
+	pref_render_driver = safe_driver;
+	pref_custom_title_bar = false;
+	// La barre de titre du système revient tout de suite ; le pilote de rendu ne peut changer
+	// qu'au démarrage.
+	_defer([]() { DisplayServer::get_singleton()->window_set_borderless(false); });
+	pref_display_checked = safe_driver + "|systeme";
+	display_check_dismissed = true;
+	display_restart_notice = display && display->get_render_driver() != safe_driver;
+	_save_prefs();
+}
+
+void EditorNode::_write_diagnostics() const {
+	DisplayServer *display = DisplayServer::get_singleton();
+	if (!display || prefs_dir.empty()) {
+		return;
+	}
+	String text = String("MEX ") + MEX_VERSION + "\n" + display->get_diagnostics();
+	text += String("Préférences : pilote de rendu « ") + pref_render_driver + " », barre de titre " + (pref_custom_title_bar ? "intégrée" : "du système") + "\n";
+	if (FILE *file = fopen((prefs_dir + "diagnostic.txt").c_str(), "wb")) {
+		fwrite(text.data(), 1, text.size(), file);
+		fclose(file);
+	}
+}
+
+void EditorNode::_draw_display_check() {
+	DisplayServer *display = DisplayServer::get_singleton();
+	if (!display) {
+		return;
+	}
+	if (display_restart_notice) {
+		ImGui::OpenPopup("Mode de compatibilité###CompatNotice");
+		display_restart_notice = false;
+	}
+	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	if (ImGui::BeginPopupModal("Mode de compatibilité###CompatNotice", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		ImGui::PushTextWrapPos(ES(440));
+		ImGui::TextUnformatted("La barre de titre du système est en place.");
+		ImGui::TextUnformatted("Le pilote de rendu le plus sûr sera utilisé au prochain démarrage : fermez MEX puis relancez-le.");
+		ImGui::TextDisabled("La vue 3D, les shaders et les lumières 2D ont besoin d'OpenGL : ils restent désactivés dans ce mode. Tout se règle dans Éditeur > Préférences.");
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+		if (_accent_button("Quitter MEX", ES(150))) {
+			ImGui::CloseCurrentPopup();
+			_defer([this]() { _request_quit(); });
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Plus tard", ImVec2(ES(120), 0))) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	const String signature = _get_display_signature();
+	const String safe_signature = DisplayServer::get_compatible_render_driver() + "|systeme";
+	// « * » : contrôle désactivé (scénarios de test).
+	if (display_check_dismissed || ImGui::GetTopMostPopupModal()) {
+		return;
+	}
+	if (!display_check_forced && (pref_display_checked == "*" || signature == pref_display_checked || signature == safe_signature)) {
+		return;
+	}
+	const ImGuiViewport *viewport = ImGui::GetMainViewport();
+	const float margin = ES(16);
+	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - margin, viewport->WorkPos.y + viewport->WorkSize.y - margin), ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+	ImGui::SetNextWindowSize(ImVec2(std::min(ES(400), viewport->WorkSize.x - margin * 2.0f), 0.0f));
+	ImGui::PushStyleColor(ImGuiCol_Border, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, std::max(1.0f, ES(1.5f)));
+	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+	if (ImGui::Begin("###DisplayCheck", nullptr, flags)) {
+		ImGui::TextUnformatted("L'affichage est-il correct ?");
+		ImGui::PushTextWrapPos(0.0f);
+		ImGui::TextDisabled("Image décalée, coupée, lente ou qui scintille : passez en mode de compatibilité (barre de titre du système, rendu le plus sûr).");
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+		if (_accent_button("Oui, tout va bien", ES(160))) {
+			pref_display_checked = signature;
+			display_check_forced = false;
+			_save_prefs();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Mode de compatibilité")) {
+			display_check_forced = false;
+			_enable_compatibility_mode();
+		}
+	}
+	ImGui::End();
+	ImGui::PopStyleVar();
+	ImGui::PopStyleColor();
+	// Toujours au-dessus des panneaux, sans prendre le focus.
+	if (ImGuiWindow *window = ImGui::FindWindowByName("###DisplayCheck")) {
+		if (!ImGui::GetTopMostPopupModal()) {
+			ImGui::BringWindowToDisplayFront(window);
+		}
+	}
 }
 
 bool EditorNode::_has_custom_title_bar() const {

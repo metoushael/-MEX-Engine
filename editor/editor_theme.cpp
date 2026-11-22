@@ -101,7 +101,18 @@ void EditorNode::_load_prefs() {
 			pref_thumbnails = config.get_value("fichiers", "miniatures", Variant(pref_thumbnails)).as_bool();
 			pref_thumbnail_size = (float)config.get_value("fichiers", "taille_des_miniatures", Variant((double)pref_thumbnail_size)).as_float();
 			pref_files_grid = config.get_value("fichiers", "grille", Variant(pref_files_grid)).as_bool();
+			pref_display_checked = config.get_value("affichage", "configuration_validee", Variant(pref_display_checked)).as_string();
 		}
+	}
+	pref_render_driver = read_render_driver_preference();
+	// Contrôle de l'affichage : pas pendant les scénarios de test (captures), sauf demande.
+	if (const char *forced = SDL_getenv("MEX_EDITOR_DISPLAY_CHECK")) {
+		display_check_forced = SDL_strcmp(forced, "0") != 0;
+		if (!display_check_forced) {
+			pref_display_checked = "*";
+		}
+	} else if (SDL_getenv("MEX_EDITOR_TEST_SCRIPT")) {
+		pref_display_checked = "*";
 	}
 	// Lue par la même fonction qu'avant la création de la fenêtre : les deux restent d'accord.
 	pref_custom_title_bar = read_title_bar_preference();
@@ -134,6 +145,10 @@ void EditorNode::_save_prefs() {
 	config.set_value("fichiers", "taille_des_miniatures", Variant((double)pref_thumbnail_size));
 	config.set_value("fichiers", "grille", Variant(pref_files_grid));
 	config.set_value("fenetre", "barre_de_titre_integree", Variant(pref_custom_title_bar));
+	config.set_value("affichage", "pilote_de_rendu", Variant(pref_render_driver));
+	if (pref_display_checked != "*") {
+		config.set_value("affichage", "configuration_validee", Variant(pref_display_checked));
+	}
 	if (config.save(prefs_path) != OK) {
 		print_warning("Impossible d'enregistrer les préférences de l'éditeur : " + prefs_path);
 	}
@@ -643,6 +658,51 @@ void EditorNode::_draw_preferences() {
 		_defer([custom]() { DisplayServer::get_singleton()->window_set_borderless(custom); });
 	}
 	ImGui::SetItemTooltip("Cochée : les boutons Réduire, Agrandir et Fermer sont dans la barre du haut de l'éditeur.\nDécochée : barre de titre du système, sombre avec un thème sombre.");
+	{
+		// Pilote de rendu : pris en compte au démarrage suivant.
+		struct DriverChoice {
+			const char *id;
+			const char *label;
+		};
+		static const DriverChoice choices[] = {
+			{ "auto", "Automatique" },
+			{ "opengl", "OpenGL (3D, shaders, lumières 2D)" },
+#if defined(_WIN32)
+			{ "direct3d", "Direct3D 9 (le plus compatible, sans 3D)" },
+			{ "direct3d11", "Direct3D 11 (sans 3D)" },
+#endif
+			{ "software", "Logiciel (lent, sans 3D)" },
+		};
+		const char *current_label = pref_render_driver.c_str();
+		for (const DriverChoice &choice : choices) {
+			if (pref_render_driver == choice.id) {
+				current_label = choice.label;
+			}
+		}
+		row("Pilote de rendu");
+		ImGui::SetNextItemWidth(ES(260));
+		if (ImGui::BeginCombo("##render_driver", current_label)) {
+			for (const DriverChoice &choice : choices) {
+				if (ImGui::Selectable(choice.label, pref_render_driver == choice.id)) {
+					pref_render_driver = choice.id;
+					changed = true;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		DisplayServer *display = DisplayServer::get_singleton();
+		ImGui::PushTextWrapPos(0.0f);
+		ImGui::TextDisabled("Utilisé en ce moment : %s%s. Un autre choix est pris en compte au prochain démarrage de MEX. « Automatique » prend OpenGL si le pilote de la carte graphique est fiable.",
+				display->get_render_driver().c_str(), display->get_render_details().empty() ? "" : (" - " + display->get_render_details()).c_str());
+		if (!display->get_render_note().empty()) {
+			ImGui::TextColored(col(palette.warning), "%s", display->get_render_note().c_str());
+		}
+		ImGui::PopTextWrapPos();
+		if (ImGui::Button("Mode de compatibilité")) {
+			_enable_compatibility_mode();
+		}
+		ImGui::SetItemTooltip("Barre de titre du système et pilote de rendu le plus sûr.\nÀ utiliser si l'image est décalée, coupée, lente ou scintille.");
+	}
 
 	// --- Fichiers ---
 	ImGui::SeparatorText(ICON_DOCK_FILES "  Fichiers");
@@ -667,6 +727,7 @@ void EditorNode::_draw_preferences() {
 		pref_rounding = 5.0f;
 		pref_thumbnails = true;
 		pref_thumbnail_size = 72.0f;
+		pref_render_driver = "auto";
 		{
 			// Barre de titre : réglage d'origine du système (intégrée sous Windows et Linux).
 			const bool custom = get_default_title_bar_preference();

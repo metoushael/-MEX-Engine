@@ -101,7 +101,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.6.0). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.6.1). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -131,6 +131,7 @@ mex --path projects/demo3d             # lance la démonstration 3D
 | `--quit-after <n>` | Quitte après `n` images |
 | `--screenshot <f.bmp>` | Enregistre la dernière image |
 | `--hidden` | Fenêtre masquée |
+| `--sans-echec` | Mode de compatibilité pour cette fois : barre de titre du système, pilote de rendu le plus sûr (sans 3D) |
 
 En jeu, F11 bascule le plein écran.
 
@@ -139,11 +140,49 @@ En jeu, F11 bascule le plein écran.
 | `MEX_SCREEN_SCALE` | Impose l'échelle de l'écran (`1`, `1.5`, `2`...) au lieu de celle que déclare le système |
 | `MEX_EDITOR_SCALE` | Impose l'échelle de l'interface de l'éditeur, sans toucher aux préférences |
 | `MEX_EDITOR_THEME` | Impose le thème de l'éditeur, par exemple `Clair` |
-| `MEX_RENDER_DRIVER` | Pilote de rendu SDL à utiliser à la place d'`opengl` |
+| `MEX_RENDER_DRIVER` | Impose un pilote de rendu SDL (`opengl`, `direct3d`, `direct3d11`, `software`, `metal`...) |
 
-Le moteur demande à SDL son pilote de rendu `opengl`, dont la 3D a besoin. La variable
-d'environnement `MEX_RENDER_DRIVER` en impose un autre (`software`, `direct3d`, `metal`...) :
-la 2D fonctionne alors normalement, la 3D est désactivée et le moteur le signale.
+### Pilote de rendu et mode de compatibilité
+
+La 3D, les shaders 2D et les lumières 2D ont besoin du pilote de rendu `opengl`. Le moteur
+l'essaie donc en premier, puis **contrôle le pilote OpenGL de la carte graphique** avant de
+s'en servir. Un mauvais pilote OpenGL ne refuse pas de démarrer : il donne une image fausse
+(vues blanches, image décalée, lenteur). Il est écarté dans trois cas :
+
+- Windows sans pilote du fabricant de la carte (« GDI Generic », OpenGL 1.1 calculé par le
+  processeur) ;
+- OpenGL trop ancien : moins de 3.3 sous Windows, moins de 2.1 ailleurs ;
+- pas de dessin dans une texture.
+
+Le moteur prend alors le pilote habituel du système (Direct3D sous Windows), puis le rendu
+logiciel. La 2D fonctionne normalement, la 3D, les shaders et les lumières 2D sont
+désactivés, et la raison est écrite dans la *Sortie* de l'éditeur.
+
+| Réglage | Où |
+| --- | --- |
+| Éditeur | *Éditeur > Préférences... > Fenêtre > Pilote de rendu* (au prochain démarrage) |
+| Jeu | `rendering/driver` dans `project.mex` : `"auto"`, `"opengl"`, `"direct3d"`, `"direct3d11"`, `"software"` |
+| Pour une fois | variable `MEX_RENDER_DRIVER`, qui passe avant les deux autres |
+
+Un pilote choisi à la main est pris tel quel, sans contrôle.
+
+Le **mode de compatibilité** réunit les deux réglages les plus sûrs : barre de titre du
+système et Direct3D 9 sous Windows (rendu logiciel ailleurs). Trois façons de l'activer :
+
+- la question **« L'affichage est-il correct ? »**, posée en bas à droite la première fois
+  qu'une combinaison (pilote de rendu, barre de titre) est utilisée sur la machine :
+  *Mode de compatibilité*, puis fermer et relancer MEX ; *Oui, tout va bien* ne repose plus
+  la question ;
+- *Éditeur > Préférences... > Fenêtre > Mode de compatibilité* ;
+- sous Windows, le fichier `mex-sans-echec.bat` livré à côté de `mex.exe`, ou
+  `mex --sans-echec` : valable pour ce lancement, les préférences ne changent pas.
+
+*Aide > À propos* affiche l'état de l'affichage (système, écrans, échelle, taille de la
+fenêtre, pilote de rendu, version d'OpenGL et carte), avec un bouton pour le copier. Le
+même texte est écrit à chaque démarrage de l'éditeur dans `diagnostic.txt`, dans le dossier
+de préférences (`%APPDATA%\Metoushela\MEX` sous Windows,
+`~/.local/share/Metoushela/MEX` sous Linux). Joignez-le à tout signalement de problème
+d'affichage.
 
 ## Premiers pas
 
@@ -230,7 +269,8 @@ la barre du système est le réglage d'origine : elle suit déjà l'apparence du
 
 L'interface s'adapte à la taille de la fenêtre et de l'écran :
 
-- la fenêtre s'ouvre agrandie, sans recouvrir la barre des tâches ;
+- la fenêtre s'ouvre agrandie, sans recouvrir la barre des tâches ; restaurée, elle tient
+  toujours dans l'écran (sur un écran de 1366 x 768, elle est ramenée à 1157 x 691) ;
 - avec l'échelle *Automatique*, l'interface rétrécit par pas de 5 %, jusqu'à 75 %, quand la
   fenêtre passe sous 1280 x 680 points ;
 - la barre du haut se resserre : les espaces de travail ne gardent que leur icône, puis les
@@ -811,6 +851,10 @@ français.
 - Débogage : pas de points d'arrêt, d'exécution pas à pas ni d'inspection des variables en
   cours de jeu ; le profileur mesure les scripts, pas le détail du moteur.
 - Pas de système d'extensions (modules chargés à l'exécution, greffons de l'éditeur).
+- Affichage sous Windows : la version Windows est compilée et essayée sous Wine, pas sur
+  toutes les cartes graphiques. Si l'image est mauvaise sur une machine, le mode de
+  compatibilité (voir *Pilote de rendu et mode de compatibilité*) rend un affichage sûr, et
+  `diagnostic.txt` dit quel pilote est en cause.
 - Export : Windows, Linux et macOS seulement ; pas d'export Web ni Android.
 - Export : pas d'icône d'application, de paquet `.app` pour macOS ni de compression de l'archive ;
   les exécutables ne sont pas signés.
@@ -839,7 +883,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.6.0"
+git commit -m "MEX 0.6.1"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -849,7 +893,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Archives `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.6.0**. Archives `mex-v0.6.0-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.6.1**. Archives `mex-v0.6.1-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -859,22 +903,22 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.6.0
-  git push origin v0.6.0
+  git tag v0.6.1
+  git push origin v0.6.1
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.6.0` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.6.1` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.6.0-windows-x86_64.zip`
-- `mex-v0.6.0-linux-x86_64.tar.gz`
-- `mex-v0.6.0-macos-universal.tar.gz`
+- `mex-v0.6.1-windows-x86_64.zip`
+- `mex-v0.6.1-linux-x86_64.tar.gz`
+- `mex-v0.6.1-macos-universal.tar.gz`
 - `SHA256SUMS.txt`, les empreintes des archives.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.6.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.6.1-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 archives sont tout de même publiées et la note de version le signale.
 
 **Si rien n'apparaît dans Releases :**

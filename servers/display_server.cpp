@@ -5,7 +5,10 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <vector>
 
 DisplayServer *DisplayServer::singleton = nullptr;
 
@@ -67,6 +70,111 @@ float DisplayServer::get_pixel_ratio() const {
 	return window_w > 0 && output_w > 0 ? (float)output_w / (float)window_w : 1.0f;
 }
 
+// ---------------------------------------------------------------------------
+// Choix du pilote de rendu
+// ---------------------------------------------------------------------------
+#if defined(_WIN32)
+#define MEX_DISPLAY_GL_CALL __stdcall
+#else
+#define MEX_DISPLAY_GL_CALL
+#endif
+
+// Le pilote OpenGL que SDL vient d'ouvrir est-il digne de confiance ? Sinon r_reason dit
+// pourquoi. Un mauvais pilote OpenGL ne refuse pas de démarrer : il affiche une image fausse
+// (vues blanches, image décalée, lenteur). On le repère donc avant de s'en servir.
+static bool _opengl_is_reliable(SDL_Renderer *p_renderer, String &r_details, String &r_reason) {
+	SDL_RendererInfo info;
+	SDL_zero(info);
+	SDL_GetRendererInfo(p_renderer, &info);
+	typedef const unsigned char *(MEX_DISPLAY_GL_CALL * GetStringFn)(unsigned int);
+	GetStringFn get_string = (GetStringFn)SDL_GL_GetProcAddress("glGetString");
+	const char *version = get_string ? (const char *)get_string(0x1F02) : nullptr; // GL_VERSION
+	const char *card = get_string ? (const char *)get_string(0x1F01) : nullptr; // GL_RENDERER
+	const char *vendor = get_string ? (const char *)get_string(0x1F00) : nullptr; // GL_VENDOR
+	r_details = String("OpenGL ") + (version ? version : "?") + " - " + (card ? card : "?") + " (" + (vendor ? vendor : "?") + ")";
+	if (!version || !card) {
+		r_reason = "le pilote OpenGL ne répond pas";
+		return false;
+	}
+	if (strstr(card, "GDI Generic")) {
+		// Windows sans pilote du fabricant de la carte : OpenGL 1.1 calculé par le processeur.
+		r_reason = "aucun pilote OpenGL du fabricant de la carte graphique n'est installé (rendu de secours de Windows)";
+		return false;
+	}
+	int major = 0, minor = 0;
+	sscanf(version, "%d.%d", &major, &minor);
+#if defined(_WIN32)
+	// Sous Windows, Direct3D est toujours là et sûr : on n'accepte qu'un OpenGL récent. Les
+	// pilotes OpenGL des anciennes puces (OpenGL 2.x et 3.0 à 3.2) y sont trop souvent fautifs.
+	const int need_major = 3, need_minor = 3;
+#else
+	const int need_major = 2, need_minor = 1;
+#endif
+	if (major < need_major || (major == need_major && minor < need_minor)) {
+		char text[96];
+		snprintf(text, sizeof(text), "OpenGL %d.%d est trop ancien (%d.%d au moins)", major, minor, need_major, need_minor);
+		r_reason = text;
+		return false;
+	}
+	if (!(info.flags & SDL_RENDERER_TARGETTEXTURE)) {
+		r_reason = "le pilote OpenGL ne sait pas dessiner dans une texture";
+		return false;
+	}
+	return true;
+}
+
+String DisplayServer::get_compatible_render_driver() {
+#if defined(_WIN32)
+	return "direct3d";
+#else
+	return "software";
+#endif
+}
+
+String DisplayServer::get_diagnostics() const {
+	String text;
+	char line[512];
+	SDL_version linked;
+	SDL_GetVersion(&linked);
+	const char *video = SDL_GetCurrentVideoDriver();
+	snprintf(line, sizeof(line), "Système : %s - SDL %d.%d.%d (%s)\n", SDL_GetPlatform(), linked.major, linked.minor, linked.patch, video ? video : "?");
+	text += line;
+	const int displays = SDL_GetNumVideoDisplays();
+	for (int i = 0; i < displays; i++) {
+		SDL_Rect bounds = { 0, 0, 0, 0 }, usable = { 0, 0, 0, 0 };
+		SDL_GetDisplayBounds(i, &bounds);
+		SDL_GetDisplayUsableBounds(i, &usable);
+		float ddpi = 0, hdpi = 0, vdpi = 0;
+		SDL_GetDisplayDPI(i, &ddpi, &hdpi, &vdpi);
+		snprintf(line, sizeof(line), "Écran %d : %d x %d en (%d, %d) - zone utile %d x %d en (%d, %d) - %.0f ppp\n", i + 1, bounds.w, bounds.h, bounds.x, bounds.y, usable.w, usable.h, usable.x, usable.y, hdpi);
+		text += line;
+	}
+	snprintf(line, sizeof(line), "Échelle d'affichage : %.0f %%\n", screen_scale * 100.0f);
+	text += line;
+	if (window) {
+		int x = 0, y = 0, w = 0, h = 0, ow = 0, oh = 0;
+		SDL_GetWindowPosition(window, &x, &y);
+		SDL_GetWindowSize(window, &w, &h);
+		if (renderer) {
+			SDL_GetRendererOutputSize(renderer, &ow, &oh);
+		}
+		const Uint32 flags = SDL_GetWindowFlags(window);
+		snprintf(line, sizeof(line), "Fenêtre : %d x %d en (%d, %d) - image %d x %d - écran %d - %s%s%s\n", w, h, x, y, ow, oh, SDL_GetWindowDisplayIndex(window) + 1,
+				borderless ? "barre de titre intégrée" : "barre de titre du système",
+				(flags & SDL_WINDOW_MAXIMIZED) ? ", agrandie" : "", fullscreen ? ", plein écran" : "");
+		text += line;
+	}
+	text += String("Pilote de rendu : ") + (render_driver.empty() ? String("?") : render_driver);
+	if (!render_details.empty()) {
+		text += " - " + render_details;
+	}
+	text += "\n";
+	if (!render_note.empty()) {
+		text += "Remarque : " + render_note + "\n";
+	}
+	return text;
+}
+
 Error DisplayServer::create(const WindowOptions &p_options) {
 	// Windows : sans cette déclaration, le système étire l'image de la fenêtre sur les écrans
 	// réglés à 125 %, 150 %... et tout paraît flou. À faire avant l'initialisation de la vidéo.
@@ -82,14 +190,16 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 	if (p_options.scale_with_screen && screen_scale > 1.0f) {
 		width = (int)(width * screen_scale);
 		height = (int)(height * screen_scale);
-		SDL_Rect usable;
-		if (SDL_GetDisplayUsableBounds(0, &usable) == 0 && usable.w > 0 && usable.h > 0) {
-			// La fenêtre ne dépasse pas de l'écran ; ses proportions sont conservées.
-			const float fit = SDL_min((float)usable.w * 0.95f / (float)width, (float)usable.h * 0.9f / (float)height);
-			if (fit < 1.0f) {
-				width = (int)(width * fit);
-				height = (int)(height * fit);
-			}
+	}
+	SDL_Rect usable;
+	if (!p_options.fullscreen && SDL_GetDisplayUsableBounds(0, &usable) == 0 && usable.w > 0 && usable.h > 0 && (width > usable.w || height > usable.h)) {
+		// Écran plus petit que la fenêtre demandée, quelle que soit l'échelle (portable en
+		// 1366 x 768 par exemple) : la fenêtre ne dépasse pas de l'écran, sa barre du haut reste
+		// accessible, et ses proportions sont conservées.
+		const float fit = SDL_min((float)usable.w * 0.95f / (float)width, (float)usable.h * 0.9f / (float)height);
+		if (fit < 1.0f) {
+			width = SDL_max((int)(width * fit), 320);
+			height = SDL_max((int)(height * fit), 200);
 		}
 	}
 	// Fenêtre sans décoration sous Windows : elle garde le style d'une fenêtre ordinaire
@@ -108,31 +218,90 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 	if (p_options.borderless) {
 		flags |= SDL_WINDOW_BORDERLESS;
 	}
-	window = SDL_CreateWindow(p_options.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
-	if (!window) {
-		print_error(String("SDL_CreateWindow: ") + SDL_GetError());
-		return ERR_CANT_CREATE;
-	}
 	fullscreen = p_options.fullscreen;
 
 	Uint32 rflags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE;
 	if (p_options.vsync) {
 		rflags |= SDL_RENDERER_PRESENTVSYNC;
 	}
-	// Le rendu 3D partage le contexte OpenGL du moteur de rendu 2D de SDL : on demande donc le
-	// pilote « opengl » partout (Direct3D et Metal sont sinon choisis par défaut sous Windows
-	// et macOS). MEX_RENDER_DRIVER permet de forcer un autre pilote (« software », « direct3d »...)
-	// au prix de la 3D. Si le pilote demandé échoue, SDL essaie les autres.
-	const char *driver = SDL_getenv("MEX_RENDER_DRIVER");
-	SDL_SetHint(SDL_HINT_RENDER_DRIVER, driver && *driver ? driver : "opengl");
-	renderer = SDL_CreateRenderer(window, -1, rflags);
-	if (!renderer) {
-		// Repli sur le rendu logiciel (machines sans GPU, mode sans affichage).
-		renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE | SDL_RENDERER_TARGETTEXTURE);
+	// Le rendu 3D, les shaders et les lumières 2D partagent le contexte OpenGL du moteur de
+	// rendu 2D de SDL : OpenGL est donc essayé en premier. Mais un pilote OpenGL ancien ou
+	// absent donne une image fausse au lieu d'échouer : il est contrôlé, et s'il n'est pas
+	// fiable on prend le pilote habituel du système (Direct3D sous Windows, Metal sous macOS),
+	// sans la 3D. Un pilote demandé (préférence, MEX_RENDER_DRIVER) est pris tel quel.
+	String requested = p_options.render_driver;
+	if (const char *forced = SDL_getenv("MEX_RENDER_DRIVER")) {
+		if (*forced) {
+			requested = forced;
+		}
 	}
-	if (!renderer) {
-		print_error(String("SDL_CreateRenderer: ") + SDL_GetError());
+	if (requested == "auto") {
+		requested = String();
+	}
+	std::vector<String> candidates;
+	if (!requested.empty()) {
+		candidates.push_back(requested);
+	}
+	for (const char *name : { "opengl", "", "software" }) {
+		if (requested.empty() || requested != name) {
+			candidates.push_back(name);
+		}
+	}
+	render_driver = String();
+	render_details = String();
+	render_note = String();
+	String last_error;
+	for (size_t i = 0; i < candidates.size() && !renderer; i++) {
+		const String &candidate = candidates[i];
+		const bool is_requested = i == 0 && !requested.empty();
+		// Une fenêtre neuve à chaque essai : SDL la transforme pour OpenGL, et un autre pilote
+		// ne doit pas hériter d'une fenêtre déjà liée à OpenGL.
+		window = SDL_CreateWindow(p_options.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+		if (!window) {
+			last_error = String("SDL_CreateWindow: ") + SDL_GetError();
+			continue;
+		}
+		SDL_SetHint(SDL_HINT_RENDER_DRIVER, candidate.c_str());
+		renderer = SDL_CreateRenderer(window, -1, candidate == "software" ? (Uint32)(SDL_RENDERER_SOFTWARE | SDL_RENDERER_TARGETTEXTURE) : rflags);
+		if (!renderer) {
+			last_error = String("SDL_CreateRenderer: ") + SDL_GetError();
+			SDL_DestroyWindow(window);
+			window = nullptr;
+			if (is_requested) {
+				render_note = "le pilote de rendu « " + requested + " » demandé n'a pas pu être ouvert";
+			}
+			continue;
+		}
+		SDL_RendererInfo info;
+		SDL_zero(info);
+		SDL_GetRendererInfo(renderer, &info);
+		const String actual = info.name ? info.name : "";
+		String details, reason;
+		if (actual == "opengl") {
+			const bool reliable = _opengl_is_reliable(renderer, details, reason);
+			// Pilote choisi par l'utilisateur : gardé même s'il est jugé peu fiable.
+			if (!reliable && !(is_requested && requested == "opengl")) {
+				render_note = "OpenGL écarté : " + reason + " [" + details + "]. Rendu 3D, shaders et lumières 2D désactivés.";
+				SDL_DestroyRenderer(renderer);
+				renderer = nullptr;
+				SDL_DestroyWindow(window);
+				window = nullptr;
+				continue;
+			}
+		}
+		if (is_requested && actual != requested) {
+			render_note = "le pilote de rendu « " + requested + " » demandé n'a pas pu être ouvert";
+		}
+		render_driver = actual;
+		render_details = details;
+	}
+	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "");
+	if (!renderer || !window) {
+		print_error(last_error.empty() ? String("Aucun pilote de rendu utilisable.") : last_error);
 		return ERR_CANT_CREATE;
+	}
+	if (!render_note.empty() && !p_options.hidden) {
+		print_warning("Affichage : " + render_note + " Pilote utilisé : " + render_driver + ".");
 	}
 
 	// Réglages de la fenêtre, après la création du moteur de rendu : SDL peut recréer la
@@ -158,6 +327,9 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 	if (!p_options.hidden) {
 		SDL_ShowWindow(window);
 	}
+	// Windows : le cadre est recalculé une fois la fenêtre montrée et le rendu en place, pour
+	// que l'image couvre exactement la fenêtre sans décoration.
+	WindowPlatform::refresh_frame(window);
 	return OK;
 }
 
@@ -304,11 +476,22 @@ void DisplayServer::window_set_borderless(bool p_borderless) {
 	if (!window || p_borderless == borderless) {
 		return;
 	}
+	// Fenêtre agrandie : SDL garde la surface de dessin et fait grandir la fenêtre autour d'elle,
+	// si bien que la barre de titre du système se retrouverait au-dessus de l'écran. On la
+	// restaure le temps du changement, puis on l'agrandit de nouveau avec sa nouvelle décoration.
+	const bool was_maximized = !fullscreen && window_is_maximized();
+	if (was_maximized) {
+		SDL_RestoreWindow(window);
+	}
 	borderless = p_borderless;
 	SDL_SetWindowBordered(window, borderless ? SDL_FALSE : SDL_TRUE);
 	SDL_SetWindowHitTest(window, borderless ? _sdl_hit_test : nullptr, this);
 	_apply_title_bar_theme();
 	_apply_min_size();
+	WindowPlatform::refresh_frame(window);
+	if (was_maximized) {
+		SDL_MaximizeWindow(window);
+	}
 }
 
 void DisplayServer::window_set_caption_areas(const std::vector<WindowRect> &p_areas, int p_resize_border) {

@@ -241,6 +241,10 @@ jobs:
             cp platform/linux/mex.desktop "$PACKAGE/"
             cp branding/app/mex-icone-256.png "$PACKAGE/mex.png"
           fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # Lanceur du mode de compatibilité (barre de titre de Windows, rendu Direct3D).
+            cp platform/windows/mex-sans-echec.bat "$PACKAGE/"
+          fi
           cp thirdparty/imgui/LICENSE.txt "$PACKAGE/licences/imgui.txt"
           cp thirdparty/stb/LICENSE.txt "$PACKAGE/licences/stb.txt"
           cp thirdparty/fonts/LICENSE.txt "$PACKAGE/licences/roboto.txt"

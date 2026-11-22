@@ -26,6 +26,9 @@ void ProjectSettings::_register_defaults() {
 	defaults["physics/ticks_per_second"] = Variant(60);
 	defaults["rendering/clear_color"] = Variant(Color(0.3f, 0.3f, 0.3f, 1.0f));
 	defaults["rendering/texture_filter"] = Variant("linear"); // ou "nearest" pour le pixel art
+	// Pilote de rendu : "auto" (OpenGL si le pilote de la carte est fiable, sinon celui du
+	// système), "opengl", "direct3d", "direct3d11", "software".
+	defaults["rendering/driver"] = Variant("auto");
 	defaults["rendering/3d/msaa"] = Variant(4); // 0, 2, 4 ou 8 échantillons
 	defaults["rendering/3d/shadow_size"] = Variant(2048);
 	defaults["rendering/3d/shadow_distance"] = Variant(40.0);

@@ -76,6 +76,8 @@ void print_help() {
 	print_line("  --quit-after <n>      Quitte après n images.");
 	print_line("  --screenshot <f.bmp>  Enregistre une capture de la dernière image.");
 	print_line("  --hidden              N'affiche pas la fenêtre.");
+	print_line("  --sans-echec          Mode de compatibilité pour cette fois : barre de titre du");
+	print_line("                        système et pilote de rendu le plus sûr (sans 3D).");
 	print_line("  --version             Affiche la version.");
 	print_line("  -h, --help            Affiche cette aide.");
 	print_line("");
@@ -102,6 +104,10 @@ bool parse_command_line(int p_argc, char **p_argv, CommandLine &r_cmd) {
 			r_cmd.show_version = true;
 		} else if (arg == "--hidden") {
 			r_cmd.hidden = true;
+		} else if (arg == "--sans-echec" || arg == "--safe-mode") {
+			// Lues par l'éditeur et par DisplayServer ; les préférences ne sont pas modifiées.
+			SDL_setenv("MEX_EDITOR_TITLE_BAR", "systeme", 1);
+			SDL_setenv("MEX_RENDER_DRIVER", DisplayServer::get_compatible_render_driver().c_str(), 1);
 		} else if (arg == "--path") {
 			if (!next(r_cmd.project_path)) {
 				return false;
@@ -463,6 +469,7 @@ int Main::run(int p_argc, char **p_argv) {
 #ifdef TOOLS_ENABLED
 		// Barre de titre intégrée à l'éditeur (préférence), sinon barre sombre du système.
 		options.borderless = EditorNode::read_title_bar_preference();
+		options.render_driver = EditorNode::read_render_driver_preference();
 #endif
 	} else {
 		options.title = GLOBAL_GET("application/name").as_string();
@@ -477,6 +484,7 @@ int Main::run(int p_argc, char **p_argv) {
 		options.min_width = std::min((int)GLOBAL_GET("display/min_width").as_int(), options.width);
 		options.min_height = std::min((int)GLOBAL_GET("display/min_height").as_int(), options.height);
 		options.dark_title_bar = GLOBAL_GET("display/dark_title_bar").as_bool();
+		options.render_driver = GLOBAL_GET("rendering/driver").as_string();
 	}
 
 	int exit_code = 0;

@@ -34,6 +34,9 @@ public:
 	// Préférence « barre de titre intégrée », lue avant la création de la fenêtre (qui naît
 	// ainsi directement avec ou sans la barre du système).
 	static bool read_title_bar_preference();
+	// Pilote de rendu choisi dans les préférences (« auto » par défaut), lu avant la création
+	// de la fenêtre.
+	static String read_render_driver_preference();
 	// Réglage d'origine : barre intégrée sous Windows et Linux, barre du système sous macOS.
 	static bool get_default_title_bar_preference();
 
@@ -78,6 +81,17 @@ private:
 	// Barre de titre intégrée à l'éditeur (boutons Réduire, Agrandir, Fermer dans la barre du
 	// haut) ; sinon, barre de titre du système, en version sombre si le thème est sombre.
 	bool pref_custom_title_bar = true;
+	// Pilote de rendu (appliqué au démarrage suivant) et configuration d'affichage que
+	// l'utilisateur a déjà validée (« pilote|barre »).
+	String pref_render_driver = "auto";
+	String pref_display_checked;
+	bool display_check_forced = false; // MEX_EDITOR_DISPLAY_CHECK : tests
+	bool display_restart_notice = false;
+	bool display_check_dismissed = false; // réponse donnée : plus de question pendant cette session
+	String _get_display_signature() const;
+	void _draw_display_check(); // « L'affichage est-il correct ? », une fois par configuration
+	void _enable_compatibility_mode();
+	void _write_diagnostics() const; // diagnostic.txt dans le dossier de préférences
 	bool prefs_open = false;
 	bool style_dirty = false; // le style est réappliqué au début de l'image suivante
 	String prefs_path; // editor_settings.cfg

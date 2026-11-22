@@ -21,6 +21,9 @@ class DisplayServer {
 	bool dark_title_bar = true;
 	float screen_scale = 1.0f;
 	int min_width = 0, min_height = 0;
+	String render_driver; // pilote de rendu de SDL réellement utilisé (« opengl », « direct3d »...)
+	String render_details; // version d'OpenGL et carte graphique, quand elles sont connues
+	String render_note; // pourquoi le pilote demandé n'a pas été gardé (vide : rien à signaler)
 
 public:
 	// Rectangle en unités de fenêtre (celles des événements de souris).
@@ -65,6 +68,11 @@ public:
 		// Suit scale_with_screen, et ne dépasse jamais la place disponible à l'écran.
 		int min_width = 0;
 		int min_height = 0;
+		// Pilote de rendu de SDL : « opengl », « direct3d », « direct3d11 », « software »...
+		// Vide ou « auto » : OpenGL (3D, shaders, lumières 2D) si le pilote de la carte graphique
+		// est jugé fiable, sinon le pilote habituel du système (Direct3D sous Windows), puis le
+		// rendu logiciel. La variable d'environnement MEX_RENDER_DRIVER passe avant.
+		String render_driver;
 	};
 
 	static DisplayServer *get_singleton() { return singleton; }
@@ -80,6 +88,15 @@ public:
 
 	SDL_Window *get_window() const { return window; }
 	SDL_Renderer *get_renderer() const { return renderer; }
+	// Pilote de rendu retenu, détail (version d'OpenGL, carte) et raison d'un éventuel repli.
+	String get_render_driver() const { return render_driver; }
+	String get_render_details() const { return render_details; }
+	String get_render_note() const { return render_note; }
+	// Pilote de rendu sans risque sur ce système (mode de compatibilité).
+	static String get_compatible_render_driver();
+	// État de l'affichage, en clair : système, écran, fenêtre, pilote de rendu. Sert au
+	// fichier diagnostic.txt et à la fenêtre « À propos ».
+	String get_diagnostics() const;
 
 	Size2 window_get_size() const; // taille de sortie du rendu, en pixels
 	void window_set_title(const String &p_title);

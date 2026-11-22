@@ -1067,6 +1067,7 @@ void EditorNode::_draw_dialogs() {
 	_draw_project_settings();
 	_draw_preferences();
 	_draw_about();
+	_draw_display_check();
 }
 
 void EditorNode::_draw_create_class_tree(const String &p_class, const String &p_filter) {
@@ -1192,6 +1193,17 @@ void EditorNode::_draw_about() {
 		ImGui::BulletText("stb_image, stb_truetype (domaine public / MIT)");
 		ImGui::BulletText("Police Roboto (Apache 2.0)");
 		ImGui::BulletText("Icônes Lucide (ISC)");
+		ImGui::Spacing();
+		// État de l'affichage : à joindre à un signalement de problème.
+		ImGui::SeparatorText("Affichage");
+		const String diagnostics = String("MEX ") + MEX_VERSION + "\n" + DisplayServer::get_singleton()->get_diagnostics();
+		ImGui::PushTextWrapPos(ES(560));
+		ImGui::TextDisabled("%s", diagnostics.c_str());
+		ImGui::PopTextWrapPos();
+		if (ImGui::Button("Copier ces informations")) {
+			ImGui::SetClipboardText(diagnostics.c_str());
+		}
+		ImGui::SetItemTooltip("Aussi enregistrées dans %sdiagnostic.txt", prefs_dir.c_str());
 		ImGui::Spacing();
 		if (ImGui::Button("Fermer", ImVec2(ES(120), 0))) {
 			ImGui::CloseCurrentPopup();

@@ -136,6 +136,13 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 	}
 
 	_load_test_script();
+	// État de l'affichage : écrit dans diagnostic.txt, et repli de pilote signalé dans la sortie.
+	_write_diagnostics();
+	if (DisplayServer *display = DisplayServer::get_singleton()) {
+		if (!display->get_render_note().empty()) {
+			print_warning("Affichage : " + display->get_render_note() + " Pilote utilisé : " + display->get_render_driver() + ".");
+		}
+	}
 	uint64_t last_ticks = os->get_ticks_usec();
 	int frame_count = 0;
 	bool running = true;

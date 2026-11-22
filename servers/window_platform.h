@@ -21,4 +21,8 @@ void set_title_bar_theme(SDL_Window *p_window, bool p_dark, bool p_has_colors, u
 void install_maximize_fix(SDL_Window *p_window);
 void uninstall_maximize_fix(SDL_Window *p_window);
 
+// Windows : fait recalculer le cadre de la fenêtre (zone cliente, ombre). À appeler quand la
+// fenêtre est montrée ou change de décoration. Sans effet ailleurs.
+void refresh_frame(SDL_Window *p_window);
+
 } // namespace WindowPlatform
