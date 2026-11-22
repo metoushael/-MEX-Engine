@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<title>MEX — Metoushela Engine X</title>
+<defs>
+<linearGradient id="fond" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B1E45"/><stop offset="1" stop-color="#0C0E22"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" rx="250" fill="url(#fond)"/>
+<path d="M122.88 161.12 L284.83 161.12 L471.51 378.92 L381.54 483.88 L264.58 347.43 L264.58 630.84 L122.88 796.16 Z M901.12 796.16 L759.42 630.84 L759.42 347.43 L642.46 483.88 L552.49 378.92 L739.17 161.12 L901.12 161.12 Z" fill="#FFFFFF"/>
+<path d="M471.51 378.92 L886.34 862.88 L706.40 862.88 L381.54 483.88 Z M642.46 483.88 L317.60 862.88 L137.66 862.88 L552.49 378.92 Z" fill="#FF7A00"/>
+</svg>

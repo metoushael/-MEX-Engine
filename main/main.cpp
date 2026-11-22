@@ -62,7 +62,10 @@ struct CommandLine {
 	String main_pack;
 	bool show_version = false;
 	bool hidden = false;
+<<<<<<< HEAD
 	String export_preset; // --export : nom du préréglage, ou « * »
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	int quit_after = -1; // nombre d'images avant de quitter (tests)
 	String screenshot;
 };
@@ -77,8 +80,11 @@ void print_help() {
 	print_line("  --quit-after <n>      Quitte après n images.");
 	print_line("  --screenshot <f.bmp>  Enregistre une capture de la dernière image.");
 	print_line("  --hidden              N'affiche pas la fenêtre.");
+<<<<<<< HEAD
 	print_line("  --export <préréglage> Exporte le projet (--path) avec ce préréglage d'export_presets.cfg,");
 	print_line("                        sans ouvrir de fenêtre. « * » : tous les préréglages.");
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	print_line("  --sans-echec          Mode de compatibilité pour cette fois : barre de titre du");
 	print_line("                        système et pilote de rendu le plus sûr (sans 3D).");
 	print_line("  --version             Affiche la version.");
@@ -107,10 +113,13 @@ bool parse_command_line(int p_argc, char **p_argv, CommandLine &r_cmd) {
 			r_cmd.show_version = true;
 		} else if (arg == "--hidden") {
 			r_cmd.hidden = true;
+<<<<<<< HEAD
 		} else if (arg == "--export" || arg == "--export-release") {
 			if (!next(r_cmd.export_preset)) {
 				return false;
 			}
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 		} else if (arg == "--sans-echec" || arg == "--safe-mode") {
 			// Lues par l'éditeur et par DisplayServer ; les préférences ne sont pas modifiées.
 			SDL_setenv("MEX_EDITOR_TITLE_BAR", "systeme", 1);
@@ -392,6 +401,7 @@ int Main::run(int p_argc, char **p_argv) {
 	String pack_file = cmd.main_pack;
 	if (pack_file.empty() && cmd.project_path.empty() && !cmd.editor) {
 		const String executable = OS::get_singleton()->get_executable_path();
+<<<<<<< HEAD
 		if (!executable.empty() && PackedData::has_embedded_pack(executable)) {
 			// Jeu exporté en un seul fichier : l'archive est à la fin de l'exécutable.
 			pack_file = executable;
@@ -400,6 +410,11 @@ int Main::run(int p_argc, char **p_argv) {
 			const String pck_name = path_get_basename(path_get_file(executable)) + ".pck";
 			// À côté de l'exécutable ; dans un paquet « .app » de macOS : Contents/Resources.
 			for (const String &candidate : { path_join(dir, pck_name), path_join(dir, "data.pck"), path_join(dir, "../Resources/" + pck_name) }) {
+=======
+		if (!executable.empty()) {
+			const String dir = path_get_base_dir(executable);
+			for (const String &candidate : { path_join(dir, path_get_basename(path_get_file(executable)) + ".pck"), path_join(dir, "data.pck") }) {
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 				if (FileAccess::exists(candidate)) {
 					pack_file = candidate;
 					break;
@@ -451,6 +466,7 @@ int Main::run(int p_argc, char **p_argv) {
 	if (has_project) {
 		ProjectSettings::get_singleton()->setup(project_path);
 	}
+<<<<<<< HEAD
 	if (!cmd.export_preset.empty()) {
 		// Export en ligne de commande, comme « godot --headless --export-release » : aucune fenêtre.
 		int result = 1;
@@ -486,6 +502,8 @@ int Main::run(int p_argc, char **p_argv) {
 		unregister_core_types();
 		return result;
 	}
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	Engine::get_singleton()->set_editor_hint(cmd.editor);
 
 	// --- Serveurs ---

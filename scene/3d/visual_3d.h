@@ -12,12 +12,17 @@ class MeshInstance3D : public Node3D {
 	Ref<Material> material_override;
 	bool cast_shadow = true;
 	RID instance;
+<<<<<<< HEAD
 	RID skinned_mesh; // copie déformée du maillage, quand le parent est un Skeleton3D
 	uint64_t skin_version = 0;
 	ObjectID skin_skeleton = 0;
 
 	void _update_instance();
 	void _update_skin(bool p_force);
+=======
+
+	void _update_instance();
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 
 protected:
 	void _notification(int p_what);

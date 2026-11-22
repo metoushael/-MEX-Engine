@@ -101,7 +101,11 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
+<<<<<<< HEAD
 | `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.8.0). |
+=======
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.6.1). |
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -250,6 +254,7 @@ Ctrl+S enregistre, Ctrl+Z annule, Ctrl+Y rétablit. Les touches des actions se r
 
 ### Barre de titre et taille de la fenêtre
 
+<<<<<<< HEAD
 Sous Linux, la fenêtre de l'éditeur n'a pas de barre de titre séparée : les boutons
 **Réduire**, **Agrandir / Restaurer** et **Fermer** sont dans la barre du haut, à droite,
 aux couleurs du thème. Sous **Windows** et **macOS**, la barre de titre du système est
@@ -262,6 +267,11 @@ utilisée par défaut.
 > ne répond. Depuis la 0.7.1, la barre du système est le choix par défaut sous Windows, et
 > l'ancienne préférence est ignorée. La barre intégrée reste disponible dans les
 > préférences ; si elle dérègle l'affichage, lancez `mex-sans-echec.bat` puis décochez-la.
+=======
+La fenêtre de l'éditeur n'a pas de barre de titre séparée : les boutons **Réduire**,
+**Agrandir / Restaurer** et **Fermer** sont dans la barre du haut, à droite, aux couleurs
+du thème.
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 
 | Geste | Effet |
 | --- | --- |
@@ -591,6 +601,7 @@ Effets : `AudioEffectAmplify`, `AudioEffectLowPassFilter`, `AudioEffectHighPassF
 `AudioServer.get_bus_peak_volume_db(i)` donne le niveau de crête (pour un vumètre). Les bus
 se règlent par script ou par `project.mex` : l'éditeur n'a pas encore de table de mixage.
 
+<<<<<<< HEAD
 ### Son en 3D
 
 `AudioStreamPlayer3D` place un son dans l'espace ; il est entendu depuis le nœud
@@ -620,6 +631,8 @@ moteur.play()
 Différences avec Godot : sortie stéréo seulement ; hors du cône et avec la distance, le son
 est baissé au lieu d'être filtré dans les aigus ; pas de zones de réverbération.
 
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 ## Traductions
 
 Les textes se rangent dans un tableau CSV : la clé dans la première colonne, puis une colonne
@@ -707,6 +720,7 @@ bruts (ne mélangez pas les deux sur une même connexion).
 
 ## Exporter un jeu
 
+<<<<<<< HEAD
 L'export suit le modèle de Godot : des **préréglages** enregistrés dans
 `export_presets.cfg` à la racine du projet (mêmes sections `[preset.N]` et
 `[preset.N.options]`), un **modèle d'export** par système (l'exécutable `mex-jeu`), et une
@@ -789,6 +803,31 @@ Aucune fenêtre n'est ouverte ; le code de retour est 0 si tout a été exporté
 - Par rapport à Godot, il manque : l'export Web, Android et iOS, le chiffrement de
   l'archive, la signature de code, le changement de l'icône et des informations de version
   du `.exe`, les archives de correctifs et le choix des ressources une à une.
+=======
+*Projet > Exporter le jeu...* crée un dossier à distribuer tel quel :
+
+```
+export/
+  MonJeu          exécutable (MonJeu.exe sous Windows)
+  MonJeu.pck      tous les fichiers du projet
+```
+
+Au lancement, l'exécutable charge l'archive `.pck` qui porte son nom (ou `data.pck`) et
+démarre la scène principale. L'archive n'est ni compressée ni chiffrée.
+
+- L'exécutable copié est par défaut `mex-jeu`, le moteur sans éditeur placé à côté de
+  l'éditeur. S'il est absent, l'éditeur lui-même est copié.
+- Pour exporter vers un autre système, indiquez dans la boîte de dialogue le `mex-jeu` de
+  ce système, pris dans l'archive correspondante de la page *Releases* : `mex-jeu.exe`
+  donne un jeu Windows, même depuis Linux ou macOS. Un jeu Linux ou macOS exporté depuis
+  Windows doit être rendu exécutable chez le joueur (`chmod +x MonJeu`).
+- Avec les exécutables des *Releases* (ou compilés avec `-DMEX_VENDORED_SDL=ON`), le
+  joueur n'a rien à installer. Avec un exécutable lié à la SDL2 du système, SDL2 doit être
+  présente chez le joueur ; sous Windows, les `.dll` placées à côté de l'exécutable (dont
+  `SDL2.dll`) sont copiées dans le dossier d'export.
+- Sous macOS, un jeu téléchargé demande la même commande `xattr` que le moteur
+  (voir [Télécharger](#télécharger)).
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 
 ## La 3D
 
@@ -841,6 +880,7 @@ func _physics_process(delta):
 Paramètres du projet (`project.mex`) : `physics/3d/gravity` (9.8), `rendering/3d/msaa`
 (4), `rendering/3d/shadow_size` (2048), `rendering/3d/shadow_distance` (40).
 
+<<<<<<< HEAD
 ### Modèles glTF
 
 `load("res://modele.glb")` (ou `.gltf`) donne un `ArrayMesh`, comme pour un `.obj` ; dans
@@ -894,6 +934,8 @@ de sommets ; les courbes « CUBICSPLINE » sont lues en linéaire ; pas de ciné
 inverse, de `BoneAttachment3D` ni de formes de mélange ; MexScript n'a pas de type
 `Quaternion`.
 
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 ## MexScript
 
 Le langage de script ressemble à GDScript. Exemple, simplifié depuis `projects/plateforme/joueur.mx` :
@@ -934,8 +976,11 @@ Fonctions appelées par le moteur : `_init`, `_ready`, `_process(delta)`,
 | --- | --- |
 | Base | `Node`, `Timer`, `CanvasLayer`, `AudioStreamPlayer`, `AnimationPlayer` |
 | Effets 2D | `CPUParticles2D`, `PointLight2D`, `LightOccluder2D`, `CanvasModulate`, `AudioStreamPlayer2D` |
+<<<<<<< HEAD
 | Son 3D | `AudioStreamPlayer3D`, `AudioListener3D` |
 | Animation 3D | `Skeleton3D` |
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 | 2D | `Node2D`, `Marker2D`, `Sprite2D`, `AnimatedSprite2D`, `Camera2D`, `TileMap`, `RayCast2D` |
 | Physique 2D | `StaticBody2D`, `CharacterBody2D`, `RigidBody2D`, `Area2D`, `CollisionShape2D` |
 | Formes 2D | `RectangleShape2D`, `CircleShape2D`, `CapsuleShape2D`, `ConvexPolygonShape2D` |
@@ -981,9 +1026,13 @@ français.
 - 3D : rendu direct en OpenGL 2.1, sans réflexions du ciel, éclairage global ni
   post-traitement ; seule la lumière directionnelle projette des ombres ; pas de shaders
   écrits par l'utilisateur ; pas de squelettes ni d'animation de maillages ; import OBJ
+<<<<<<< HEAD
   (sans lecture des fichiers `.mtl`) et glTF sans textures ni matériaux séparés ;
   squelettes sans mélange d'animations ni cinématique inverse, peau calculée sur le
   processeur.
+=======
+  seulement (pas de glTF), sans lecture des fichiers `.mtl`.
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 - Physique 3D : sphères, boîtes et capsules uniquement (pas de maillages de collision ni de
   formes convexes quelconques), pas d'articulations, pas de détection continue : un objet
   petit et très rapide peut traverser une paroi mince.
@@ -1037,7 +1086,11 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
+<<<<<<< HEAD
 git commit -m "MEX 0.8.0"
+=======
+git commit -m "MEX 0.6.1"
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -1047,7 +1100,11 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Archives `mex-continu-...` |
+<<<<<<< HEAD
 | Étiquette `v...` | Version numérotée, par exemple **MEX v0.8.0**. Archives `mex-v0.8.0-...` |
+=======
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.6.1**. Archives `mex-v0.6.1-...` |
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -1057,6 +1114,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
+<<<<<<< HEAD
   git tag v0.8.0
   git push origin v0.8.0
   ```
@@ -1073,6 +1131,24 @@ La *Release* contient :
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
 `v0.8.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+=======
+  git tag v0.6.1
+  git push origin v0.6.1
+  ```
+
+- sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
+  bouton **Run workflow**, saisissez `v0.6.1` dans *Version à publier*, validez.
+
+La *Release* contient :
+
+- `mex-v0.6.1-windows-x86_64.zip`
+- `mex-v0.6.1-linux-x86_64.tar.gz`
+- `mex-v0.6.1-macos-universal.tar.gz`
+- `SHA256SUMS.txt`, les empreintes des archives.
+
+Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
+`v0.6.1-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 archives sont tout de même publiées et la note de version le signale.
 
 **Si rien n'apparaît dans Releases :**
@@ -1103,7 +1179,11 @@ logiciel de Mesa, et échoue si le rendu 3D ne démarre pas.
 
 ## Tests automatiques
 
+<<<<<<< HEAD
 `tests/essais/` est un projet qui vérifie le moteur de lui-même (audio, son 3D, glTF, squelettes, fonctions mathématiques, particules, shaders,
+=======
+`tests/essais/` est un projet qui vérifie le moteur de lui-même (audio, particules, shaders,
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 lumières, bus, interface, tweens, traductions, recherche de chemin, réseau local, profileur) :
 
 ```sh
@@ -1111,7 +1191,11 @@ SDL_AUDIODRIVER=dummy xvfb-run -a mex-jeu --path tests/essais --quit-after 60
 ```
 
 Chaque vérification affiche `OK` ou `ECHEC`, la dernière ligne donne le bilan
+<<<<<<< HEAD
 (`BILAN  104 réussis, 0 échecs`). La ligne d'erreur « Shader 2D ... 'inconnu' undeclared » est
+=======
+(`BILAN  70 réussis, 0 échecs`). La ligne d'erreur « Shader 2D ... 'inconnu' undeclared » est
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 attendue : un essai vérifie qu'un shader faux est bien signalé.
 
 ![Scène des essais : interface, shader, particules, lumière et ombre](docs/essais.png)
@@ -1208,4 +1292,7 @@ Depuis les sources, ces deux fichiers sont `branding/app/mex-icone-256.png` et
 | [dr_mp3](https://github.com/mackron/dr_libs) (David Reid) | Domaine public ou MIT-0, voir `thirdparty/dr_libs/LICENSE` |
 | Police Roboto Medium (Christian Robertson) | Apache 2.0, voir `thirdparty/fonts/LICENSE.txt` |
 | Icônes [Lucide](https://lucide.dev) 0.469, celles de l'éditeur | ISC, voir `thirdparty/lucide/LICENSE.txt` |
+<<<<<<< HEAD
 | [Godot Engine](https://godotengine.org) 4.3 : code adapté pour l'archive incorporée à l'exécutable, la disposition de `export_presets.cfg`, le son 3D (`AudioStreamPlayer3D`), les quaternions, le squelette (`Skeleton3D`) et des fonctions mathématiques de MexScript (`ease`, `rotate_toward`, `cubic_interpolate`, etc.) | MIT, voir `thirdparty/godot/LICENSE.txt` |
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5

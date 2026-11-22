@@ -234,10 +234,13 @@ jobs:
           mkdir -p "$PACKAGE/licences"
           cp dist/* "$PACKAGE/"
           cp -r projects docs README.md "$PACKAGE/"
+<<<<<<< HEAD
           # Modèle d'export de ce système. Pour exporter vers les autres systèmes, on réunit les
           # dossiers « templates » des trois archives à côté de l'éditeur.
           mkdir -p "$PACKAGE/templates/${{ matrix.platform }}"
           cp dist/mex-jeu* "$PACKAGE/templates/${{ matrix.platform }}/"
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
           # Identité visuelle : guide du logo, logos et icônes (le README affiche le logo).
           mkdir -p "$PACKAGE/branding"
           cp -r branding/GUIDE.md branding/mex-presentation.html branding/svg branding/png branding/web branding/app branding/mex.ico branding/mex.icns "$PACKAGE/branding/"
@@ -253,7 +256,10 @@ jobs:
           cp thirdparty/stb/LICENSE.txt "$PACKAGE/licences/stb.txt"
           cp thirdparty/fonts/LICENSE.txt "$PACKAGE/licences/roboto.txt"
           cp thirdparty/lucide/LICENSE.txt "$PACKAGE/licences/lucide.txt"
+<<<<<<< HEAD
           cp thirdparty/godot/LICENSE.txt "$PACKAGE/licences/godot.txt"
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
           sdl_source=$(ls -d build*/_deps/mex_sdl2-src | head -n 1)
           cp "$sdl_source/LICENSE.txt" "$PACKAGE/licences/sdl2.txt"
           if [ "$RUNNER_OS" = "Windows" ]; then

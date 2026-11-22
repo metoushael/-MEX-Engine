@@ -375,9 +375,13 @@ void EditorNode::_run_test_commands(int p_frame, bool p_after_render) {
 			SDL_PushEvent(&ev);
 		};
 		const int button = args.empty() ? 1 : atoi(args[0].c_str());
+<<<<<<< HEAD
 		if (command.name == "export") {
 			export_open = true; // scénarios de test : ouvre la fenêtre d'export
 		} else if (command.name == "move" && args.size() >= 2) {
+=======
+		if (command.name == "move" && args.size() >= 2) {
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 			SDL_Event ev;
 			SDL_zero(ev);
 			ev.type = SDL_MOUSEMOTION;

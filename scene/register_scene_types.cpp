@@ -15,10 +15,14 @@
 #include "scene/3d/node_3d.h"
 #include "scene/3d/physics_body_3d.h"
 #include "scene/3d/visual_3d.h"
+<<<<<<< HEAD
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/skeleton_3d.h"
 #include "scene/audio/audio_stream_player.h"
 #include "scene/resources/gltf_loader.h"
+=======
+#include "scene/audio/audio_stream_player.h"
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 #include "scene/animation/animation_player.h"
 #include "scene/gui/button.h"
 #include "scene/gui/container.h"
@@ -173,9 +177,12 @@ void register_scene_types() {
 	// Audio
 	GDREGISTER_CLASS(AudioStreamPlayer);
 	GDREGISTER_CLASS(AudioStreamPlayer2D);
+<<<<<<< HEAD
 	GDREGISTER_CLASS(AudioStreamPlayer3D);
 	GDREGISTER_CLASS(AudioListener3D);
 	GDREGISTER_CLASS(Skeleton3D);
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	GDREGISTER_ABSTRACT_CLASS(AudioServer);
 
 	ResourceLoader::add_loader(new ResourceFormatLoaderTexture);
@@ -185,7 +192,10 @@ void register_scene_types() {
 	ResourceLoader::add_loader(new ResourceFormatLoaderAudio);
 	ResourceLoader::add_loader(new ResourceFormatLoaderShader);
 	ResourceLoader::add_loader(new ResourceFormatLoaderOBJ);
+<<<<<<< HEAD
 	ResourceLoader::add_loader(new ResourceFormatLoaderGLTF);
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 }
 
 void unregister_scene_types() {

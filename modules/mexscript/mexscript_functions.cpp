@@ -415,6 +415,7 @@ BUILTIN(remap) {
 	double v = ARG(0).as_float(), a = ARG(1).as_float(), b = ARG(2).as_float(), c = ARG(3).as_float(), d = ARG(4).as_float();
 	return Variant(a == b ? c : c + (d - c) * ((v - a) / (b - a)));
 }
+<<<<<<< HEAD
 // Fonctions mathématiques portées de core/math/math_funcs.{h,cpp} du moteur Godot 4.3
 // (licence MIT, voir thirdparty/godot/LICENSE.txt).
 BUILTIN(ease) {
@@ -513,6 +514,8 @@ MATH1(sinh, std::sinh(x))
 MATH1(cosh, std::cosh(x))
 MATH1(tanh, std::tanh(x))
 
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 BUILTIN(smoothstep) {
 	CHECK_ARGS(3, 3);
 	double from = ARG(0).as_float(), to = ARG(1).as_float(), x = ARG(2).as_float();
@@ -614,9 +617,13 @@ const std::unordered_map<String, MXBuiltinFunction> &_builtins() {
 		REG(clamp), REG(clampf), REG(clampi),
 		REG(lerp), { "lerpf", &fn_lerp }, REG(lerp_angle), REG(inverse_lerp), REG(remap), REG(smoothstep), REG(move_toward),
 		REG(wrapf), REG(wrapi), REG(snapped), { "snappedf", &fn_snapped }, REG(pingpong),
+<<<<<<< HEAD
 		REG(is_equal_approx), REG(is_zero_approx), REG(is_nan), REG(is_inf), REG(is_finite),
 		REG(ease), REG(angle_difference), REG(rotate_toward), REG(cubic_interpolate), REG(bezier_interpolate),
 		REG(db_to_linear), REG(linear_to_db), REG(posmod), REG(nearest_po2), REG(sinh), REG(cosh), REG(tanh),
+=======
+		REG(is_equal_approx), REG(is_zero_approx), REG(is_nan),
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 		REG(randf), REG(randi), REG(randf_range), REG(randi_range), REG(randomize), REG(seed),
 	};
 #undef REG

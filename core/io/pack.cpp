@@ -19,10 +19,14 @@ struct PackEntry {
 
 const char PACK_MAGIC[8] = { 'M', 'E', 'X', 'P', 'A', 'C', 'K', '1' };
 
+<<<<<<< HEAD
 const char EMBED_MAGIC[4] = { 'M', 'E', 'X', 'P' };
 
 String pack_path;
 uint64_t pack_base = 0; // début de l'archive dans le fichier (0 pour une archive seule)
+=======
+String pack_path;
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 std::map<String, PackEntry> pack_files;
 std::set<String> pack_dirs; // "" = racine
 
@@ -90,6 +94,7 @@ void PackedData::unload() {
 	pack_dirs.clear();
 }
 
+<<<<<<< HEAD
 // Début d'une archive incorporée à la fin de p_in ; faux s'il n'y en a pas.
 static bool _find_embedded(std::ifstream &p_in, uint64_t &r_base, uint64_t &r_size) {
 	p_in.clear();
@@ -120,12 +125,15 @@ bool PackedData::has_embedded_pack(const String &p_path) {
 	return in && _find_embedded(in, base, size);
 }
 
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 Error PackedData::load(const String &p_pack_path) {
 	std::ifstream in(fs::u8path(p_pack_path), std::ios::binary);
 	if (!in) {
 		return ERR_FILE_CANT_OPEN;
 	}
 	char magic[8];
+<<<<<<< HEAD
 	uint64_t base = 0, total_size = 0;
 	if (in.read(magic, 8) && memcmp(magic, PACK_MAGIC, 8) == 0) {
 		in.seekg(0, std::ios::end);
@@ -135,6 +143,14 @@ Error PackedData::load(const String &p_pack_path) {
 	}
 	in.clear();
 	in.seekg((std::streamoff)(base + 8), std::ios::beg);
+=======
+	if (!in.read(magic, 8) || memcmp(magic, PACK_MAGIC, 8) != 0) {
+		return ERR_INVALID_DATA;
+	}
+	in.seekg(0, std::ios::end);
+	const uint64_t total_size = (uint64_t)in.tellg();
+	in.seekg(8, std::ios::beg);
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 
 	uint32_t count = 0;
 	if (!_read_int(in, count)) {
@@ -163,7 +179,10 @@ Error PackedData::load(const String &p_pack_path) {
 		}
 	}
 	pack_path = p_pack_path;
+<<<<<<< HEAD
 	pack_base = base;
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	pack_files = std::move(files);
 	pack_dirs = std::move(dirs);
 	return OK;
@@ -187,7 +206,11 @@ bool PackedData::get_file(const String &p_path, std::vector<uint8_t> *r_data) {
 		return false;
 	}
 	r_data->resize((size_t)it->second.size);
+<<<<<<< HEAD
 	in.seekg((std::streamoff)(pack_base + it->second.offset), std::ios::beg);
+=======
+	in.seekg((std::streamoff)it->second.offset, std::ios::beg);
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	if (it->second.size > 0 && !in.read((char *)r_data->data(), (std::streamsize)it->second.size)) {
 		r_data->clear();
 		return false;
@@ -214,7 +237,11 @@ void PackedData::list_dir(const String &p_path, std::vector<String> *r_files, st
 	}
 }
 
+<<<<<<< HEAD
 Error PackedData::create(const String &p_pack_path, const std::vector<std::pair<String, String>> &p_files, bool p_embed) {
+=======
+Error PackedData::create(const String &p_pack_path, const std::vector<std::pair<String, String>> &p_files) {
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	// Table des matières d'abord (sa taille fixe la position des données), puis les fichiers.
 	struct Item {
 		String name;
@@ -236,6 +263,7 @@ Error PackedData::create(const String &p_pack_path, const std::vector<std::pair<
 		items.push_back(item);
 	}
 
+<<<<<<< HEAD
 	std::ofstream out(fs::u8path(p_pack_path), std::ios::binary | (p_embed ? std::ios::app : std::ios::trunc));
 	if (!out) {
 		return ERR_FILE_CANT_WRITE;
@@ -252,6 +280,12 @@ Error PackedData::create(const String &p_pack_path, const std::vector<std::pair<
 			out.put('\0');
 		}
 	}
+=======
+	std::ofstream out(fs::u8path(p_pack_path), std::ios::binary | std::ios::trunc);
+	if (!out) {
+		return ERR_FILE_CANT_WRITE;
+	}
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	out.write(PACK_MAGIC, 8);
 	_write_int(out, (uint32_t)items.size());
 	uint64_t offset = header_size;
@@ -278,6 +312,7 @@ Error PackedData::create(const String &p_pack_path, const std::vector<std::pair<
 			remaining -= (uint64_t)chunk;
 		}
 	}
+<<<<<<< HEAD
 	if (p_embed) {
 		// ... et l'ensemble (archive, taille, marque) se termine sur un multiple de 8 octets.
 		uint64_t padded = data_size;
@@ -288,6 +323,8 @@ Error PackedData::create(const String &p_pack_path, const std::vector<std::pair<
 		_write_int(out, padded);
 		out.write(EMBED_MAGIC, 4);
 	}
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	out.flush();
 	return out.good() ? OK : ERR_FILE_CANT_WRITE;
 }

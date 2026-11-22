@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<title>MEX — Metoushela Engine X</title>
+<defs>
+<linearGradient id="ambre3" gradientUnits="userSpaceOnUse" x1="0" y1="235.0" x2="0" y2="789.0"><stop offset="0" stop-color="#FFA31A"/><stop offset="1" stop-color="#FF6F00"/></linearGradient>
+<linearGradient id="braise3" gradientUnits="userSpaceOnUse" x1="0" y1="235.0" x2="0" y2="789.0"><stop offset="0" stop-color="#FF8A00"/><stop offset="1" stop-color="#E85400"/></linearGradient>
+<linearGradient id="fond" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B1E45"/><stop offset="1" stop-color="#0C0E22"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" rx="230" fill="url(#fond)"/>
+<path d="M204.80 234.99 L332.65 234.99 L480.04 406.94 L409.01 489.80 L316.67 382.08 L316.67 605.82 L204.80 736.33 Z M819.20 736.33 L707.33 605.82 L707.33 382.08 L614.99 489.80 L543.96 406.94 L691.35 234.99 L819.20 234.99 Z" fill="#FFFFFF"/>
+<path d="M614.99 489.80 L358.53 789.01 L216.47 789.01 L543.96 406.94 Z" fill="url(#braise3)"/>
+<path d="M480.04 406.94 L807.53 789.01 L665.47 789.01 L409.01 489.80 Z" fill="url(#ambre3)"/>
+</svg>

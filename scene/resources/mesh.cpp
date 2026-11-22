@@ -414,6 +414,7 @@ void TorusMesh::_bind_methods() {
 // ---------------------------------------------------------------------------
 // ArrayMesh
 // ---------------------------------------------------------------------------
+<<<<<<< HEAD
 void ArrayMesh::apply_skin(const std::vector<SkinVertex> &p_skin, const std::vector<Transform3D> &p_bone_globals, std::vector<RenderingServer3D::Vertex> &r_vertices) {
 	// Les normales suivent l'inverse transposée de chaque os (exacte même avec une échelle).
 	std::vector<Basis> normal_bases(p_bone_globals.size());
@@ -442,6 +443,8 @@ void ArrayMesh::apply_skin(const std::vector<SkinVertex> &p_skin, const std::vec
 	}
 }
 
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 void ArrayMesh::set_data(const std::vector<Vertex> &p_vertices, const std::vector<uint32_t> &p_indices) {
 	vertices = p_vertices;
 	indices = p_indices;

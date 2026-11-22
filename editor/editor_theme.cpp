@@ -144,7 +144,11 @@ void EditorNode::_save_prefs() {
 	config.set_value("fichiers", "miniatures", Variant(pref_thumbnails));
 	config.set_value("fichiers", "taille_des_miniatures", Variant((double)pref_thumbnail_size));
 	config.set_value("fichiers", "grille", Variant(pref_files_grid));
+<<<<<<< HEAD
 	config.set_value("fenetre", get_title_bar_preference_key(), Variant(pref_custom_title_bar));
+=======
+	config.set_value("fenetre", "barre_de_titre_integree", Variant(pref_custom_title_bar));
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	config.set_value("affichage", "pilote_de_rendu", Variant(pref_render_driver));
 	if (pref_display_checked != "*") {
 		config.set_value("affichage", "configuration_validee", Variant(pref_display_checked));
@@ -412,7 +416,10 @@ const char *EditorNode::_class_icon(const String &p_class) {
 		{ "Marker2D", ICON_NODE_MARKER },
 		{ "Marker3D", ICON_NODE_MARKER },
 		{ "MeshInstance3D", ICON_NODE_MESH },
+<<<<<<< HEAD
 		{ "Skeleton3D", ICON_NODE_MESH },
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 		{ "OmniLight3D", ICON_NODE_OMNI },
 		{ "Panel", ICON_NODE_PANEL },
 		{ "PanelContainer", ICON_NODE_PANEL },
@@ -471,7 +478,11 @@ static int _file_kind(const String &p_path) {
 	if (ext == "wav" || ext == "ogg" || ext == "mp3") {
 		return 4;
 	}
+<<<<<<< HEAD
 	if (ext == "obj" || ext == "glb" || ext == "gltf") {
+=======
+	if (ext == "obj") {
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 		return 5;
 	}
 	if (ext == "ttf" || ext == "otf") {
@@ -658,11 +669,15 @@ void EditorNode::_draw_preferences() {
 		const bool custom = pref_custom_title_bar;
 		_defer([custom]() { DisplayServer::get_singleton()->window_set_borderless(custom); });
 	}
+<<<<<<< HEAD
 #if defined(_WIN32)
 	ImGui::SetItemTooltip("Cochée : les boutons Réduire, Agrandir et Fermer sont dans la barre du haut de l'éditeur.\nDécochée (par défaut sous Windows) : barre de titre du système, sombre avec un thème sombre.\n\nAttention : avec certaines cartes graphiques Intel, la barre intégrée décale l'image et les clics\nne tombent plus au bon endroit. Si cela arrive, lancez « mex-sans-echec.bat » puis décochez cette case.");
 #else
 	ImGui::SetItemTooltip("Cochée : les boutons Réduire, Agrandir et Fermer sont dans la barre du haut de l'éditeur.\nDécochée : barre de titre du système, sombre avec un thème sombre.");
 #endif
+=======
+	ImGui::SetItemTooltip("Cochée : les boutons Réduire, Agrandir et Fermer sont dans la barre du haut de l'éditeur.\nDécochée : barre de titre du système, sombre avec un thème sombre.");
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	{
 		// Pilote de rendu : pris en compte au démarrage suivant.
 		struct DriverChoice {

@@ -2,8 +2,11 @@
 // déplacement / rotation / échelle et aides visuelles (grille, caméras, lumières, formes).
 #include "editor_node.h"
 
+<<<<<<< HEAD
 #include "scene/resources/gltf_loader.h"
 
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 #include "core/config/project_settings.h"
 #include "core/io/resource_loader.h"
 #include "core/string/ustring.h"
@@ -415,7 +418,11 @@ void EditorNode::_draw_viewport_3d() {
 	ImDrawList *draw_list = ImGui::GetWindowDrawList();
 	draw_list->AddImage(_texture_id(rs3d->viewport_get_texture(view3d_viewport)), origin, ImVec2(origin.x + size.x, origin.y + size.y));
 
+<<<<<<< HEAD
 	// Dépôt d'un fichier : instancie une scène ou crée un MeshInstance3D (.obj, .glb, .gltf).
+=======
+	// Dépôt d'un fichier : instancie une scène ou crée un MeshInstance3D (.obj).
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	if (ImGui::BeginDragDropTarget()) {
 		if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MEX_FILE")) {
 			const String path((const char *)payload->Data);
@@ -432,6 +439,7 @@ void EditorNode::_draw_viewport_3d() {
 				Node *created = nullptr;
 				if (ext == "scn") {
 					created = _instance_scene(path, scene_root);
+<<<<<<< HEAD
 				} else if (ext == "obj" || ext == "glb" || ext == "gltf") {
 					const String node_name = str_capitalize(path_get_basename(path_get_file(path)));
 					Ref<ArrayMesh> array_mesh = ResourceLoader::load(path);
@@ -454,6 +462,13 @@ void EditorNode::_draw_viewport_3d() {
 							created->set("mesh", Variant(ResourceLoader::load(path)));
 							created->set_name(node_name);
 						}
+=======
+				} else if (ext == "obj") {
+					created = _create_node("MeshInstance3D", scene_root);
+					if (created) {
+						created->set("mesh", Variant(ResourceLoader::load(path)));
+						created->set_name(str_capitalize(path_get_basename(path_get_file(path))));
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 					}
 				}
 				if (Node3D *n = Object::cast_to<Node3D>(created)) {

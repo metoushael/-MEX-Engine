@@ -101,7 +101,11 @@ int EditorNode::_get_preview_kind(const String &p_path) {
 	if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "tga" || ext == "gif") {
 		return PREVIEW_IMAGE;
 	}
+<<<<<<< HEAD
 	if (ext == "obj" || ext == "glb" || ext == "gltf") {
+=======
+	if (ext == "obj") {
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 		return PREVIEW_MESH;
 	}
 	if (ext == "scn") {

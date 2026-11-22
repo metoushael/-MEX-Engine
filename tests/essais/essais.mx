@@ -28,10 +28,13 @@ func verifier(nom, condition):
 
 func _ready():
 	essai_audio()
+<<<<<<< HEAD
 	essai_audio_3d()
 	essai_gltf()
 	essai_squelette()
 	essai_maths()
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 	essai_particules()
 	essai_shader()
 	essai_lumieres()
@@ -56,6 +59,7 @@ func essai_audio():
 	lecteur.play()
 	verifier("audio : lecture d'un Ogg", lecteur.is_playing())
 
+<<<<<<< HEAD
 func essai_audio_3d():
 	var auditeur = AudioListener3D.new()
 	add_child(auditeur)
@@ -174,6 +178,8 @@ func essai_maths():
 	verifier("maths : posmod et nearest_po2", posmod(-7, 3) == 2 and posmod(7, -3) == -2 and nearest_po2(100) == 128 and nearest_po2(64) == 64)
 	verifier("maths : is_inf, is_finite, tanh", is_inf(1.0 / 0.0) and is_finite(3.0) and not is_finite(1.0 / 0.0) and abs(tanh(1.0) - 0.76159) < 0.0001)
 
+=======
+>>>>>>> ad542b7994018528bfadabd060baf4823c0564c5
 func essai_particules():
 	particules = CPUParticles2D.new()
 	particules.position = Vector2(120, 250)
