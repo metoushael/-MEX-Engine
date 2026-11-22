@@ -7,6 +7,8 @@
 #include "scene/2d/node_2d.h"
 #include "scene/2d/physics_body_2d.h"
 #include "scene/2d/ray_cast_2d.h"
+#include "scene/2d/cpu_particles_2d.h"
+#include "scene/2d/light_2d.h"
 #include "scene/2d/sprite_2d.h"
 #include "scene/2d/tile_map.h"
 #include "scene/3d/collision_shape_3d.h"
@@ -21,6 +23,9 @@
 #include "scene/gui/control.h"
 #include "scene/gui/label.h"
 #include "scene/gui/panel.h"
+#include "scene/gui/scroll_container.h"
+#include "scene/gui/widgets.h"
+#include "scene/resources/theme.h"
 #include "scene/main/canvas_item.h"
 #include "scene/main/canvas_layer.h"
 #include "scene/main/node.h"
@@ -53,7 +58,29 @@ void register_scene_types() {
 	GDREGISTER_CLASS(CircleShape2D);
 	GDREGISTER_CLASS(CapsuleShape2D);
 	GDREGISTER_CLASS(ConvexPolygonShape2D);
+	GDREGISTER_CLASS(Theme);
+	GDREGISTER_ABSTRACT_CLASS(Tweener);
+	GDREGISTER_CLASS(PropertyTweener);
+	GDREGISTER_CLASS(IntervalTweener);
+	GDREGISTER_CLASS(CallbackTweener);
+	GDREGISTER_CLASS(MethodTweener);
+	GDREGISTER_CLASS(Tween);
+	GDREGISTER_CLASS(Shader);
+	GDREGISTER_CLASS(CanvasItemMaterial);
+	GDREGISTER_CLASS(ShaderMaterial);
+	GDREGISTER_ABSTRACT_CLASS(AudioEffect);
+	GDREGISTER_CLASS(AudioEffectAmplify);
+	GDREGISTER_ABSTRACT_CLASS(AudioEffectFilter);
+	GDREGISTER_CLASS(AudioEffectLowPassFilter);
+	GDREGISTER_CLASS(AudioEffectHighPassFilter);
+	GDREGISTER_CLASS(AudioEffectDelay);
+	GDREGISTER_CLASS(AudioEffectReverb);
+	GDREGISTER_CLASS(AudioEffectDistortion);
+	GDREGISTER_CLASS(AudioEffectLimiter);
+	GDREGISTER_ABSTRACT_CLASS(AudioStream);
 	GDREGISTER_CLASS(AudioStreamWAV);
+	GDREGISTER_CLASS(AudioStreamOggVorbis);
+	GDREGISTER_CLASS(AudioStreamMP3);
 	GDREGISTER_ABSTRACT_CLASS(Shape3D);
 	GDREGISTER_CLASS(SphereShape3D);
 	GDREGISTER_CLASS(BoxShape3D);
@@ -76,6 +103,10 @@ void register_scene_types() {
 	GDREGISTER_CLASS(Marker2D);
 	GDREGISTER_CLASS(Sprite2D);
 	GDREGISTER_CLASS(AnimatedSprite2D);
+	GDREGISTER_CLASS(CPUParticles2D);
+	GDREGISTER_CLASS(CanvasModulate);
+	GDREGISTER_CLASS(PointLight2D);
+	GDREGISTER_CLASS(LightOccluder2D);
 	GDREGISTER_CLASS(Camera2D);
 	GDREGISTER_CLASS(TileMap);
 	GDREGISTER_ABSTRACT_CLASS(CollisionObject2D);
@@ -121,15 +152,32 @@ void register_scene_types() {
 	GDREGISTER_CLASS(HBoxContainer);
 	GDREGISTER_CLASS(MarginContainer);
 	GDREGISTER_CLASS(CenterContainer);
+	GDREGISTER_CLASS(GridContainer);
+	GDREGISTER_CLASS(ScrollContainer);
+	GDREGISTER_CLASS(TabContainer);
+	GDREGISTER_CLASS(CheckBox);
+	GDREGISTER_CLASS(TextureButton);
+	GDREGISTER_ABSTRACT_CLASS(Slider);
+	GDREGISTER_CLASS(HSlider);
+	GDREGISTER_CLASS(VSlider);
+	GDREGISTER_CLASS(OptionButton);
+	GDREGISTER_CLASS(ItemList);
+	GDREGISTER_CLASS(NinePatchRect);
+	GDREGISTER_ABSTRACT_CLASS(Separator);
+	GDREGISTER_CLASS(HSeparator);
+	GDREGISTER_CLASS(VSeparator);
 
 	// Audio
 	GDREGISTER_CLASS(AudioStreamPlayer);
+	GDREGISTER_CLASS(AudioStreamPlayer2D);
+	GDREGISTER_ABSTRACT_CLASS(AudioServer);
 
 	ResourceLoader::add_loader(new ResourceFormatLoaderTexture);
 	ResourceLoader::add_loader(new ResourceFormatLoaderFont);
 	ResourceLoader::add_loader(new ResourceFormatLoaderScene);
 	ResourceLoader::add_loader(new ResourceFormatLoaderText);
-	ResourceLoader::add_loader(new ResourceFormatLoaderWAV);
+	ResourceLoader::add_loader(new ResourceFormatLoaderAudio);
+	ResourceLoader::add_loader(new ResourceFormatLoaderShader);
 	ResourceLoader::add_loader(new ResourceFormatLoaderOBJ);
 }
 

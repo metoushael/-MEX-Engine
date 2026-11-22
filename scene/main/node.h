@@ -5,6 +5,7 @@
 #include "core/object/object.h"
 
 class SceneTree;
+class Tween;
 
 class Node : public Object {
 	GDCLASS(Node, Object)
@@ -24,6 +25,7 @@ public:
 		NOTIFICATION_CHILD_ORDER_CHANGED = 24,
 		NOTIFICATION_INTERNAL_PROCESS = 25,
 		NOTIFICATION_INTERNAL_PHYSICS_PROCESS = 26,
+		NOTIFICATION_TRANSLATION_CHANGED = 27, // langue ou traductions modifiées
 	};
 
 	enum ProcessMode {
@@ -108,6 +110,8 @@ public:
 
 	SceneTree *get_tree() const { return tree; }
 	bool is_inside_tree() const { return inside_tree; }
+	// Tween lié à ce nœud : il s'arrête de lui-même quand le nœud est supprimé.
+	Ref<Tween> create_tween();
 	bool is_node_ready() const { return ready_notified; }
 
 	void set_process(bool p_enable) { process = p_enable; }

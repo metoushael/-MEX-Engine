@@ -2,6 +2,7 @@
 #include "editor_node.h"
 
 #include "core/config/engine.h"
+#include "core/debug_monitor.h"
 #include "core/config/project_settings.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
@@ -806,15 +807,83 @@ void EditorNode::_draw_filesystem_dock() {
 // ---------------------------------------------------------------------------
 // Dock « Sortie »
 // ---------------------------------------------------------------------------
+// Profileur : temps passé dans chaque fonction de script du jeu en cours (les courbes
+// générales sont dans le dock « Moniteur »).
+// Fenêtre placée dans le même groupe d'onglets que la sortie.
+static void _draw_profiler_window(ImGuiID p_dock_id, bool p_game_running) {
+	if (p_dock_id) {
+		ImGui::SetNextWindowDockID(p_dock_id, ImGuiCond_FirstUseEver);
+	}
+	if (!ImGui::Begin(ICON_NODE_PROGRESS "  Profileur###Profiler")) {
+		ImGui::End();
+		return;
+	}
+	Performance *performance = Performance::get_singleton();
+	static Array profile;
+	static double next_refresh = 0;
+	const double now = ImGui::GetTime();
+	if (now >= next_refresh) {
+		// Rafraîchi deux fois par seconde : des chiffres qui changent à chaque image sont illisibles.
+		next_refresh = now + 0.5;
+		profile = performance->get_script_profile(false);
+	}
+	bool profiling = performance->is_script_profiling();
+	if (ImGui::Checkbox("Mesurer les scripts", &profiling)) {
+		performance->set_script_profiling(profiling);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(ICON_TRASH "  Remettre à zéro")) {
+		performance->get_script_profile(true);
+		profile = Array();
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled(p_game_running ? "Jeu en cours" : "Lancez le jeu pour obtenir des mesures");
+	ImGui::Separator();
+
+	ImGui::BeginChild("##fonctions", ImVec2(0, 0));
+	if (profile.is_empty()) {
+		ImGui::TextDisabled(profiling ? "Aucune fonction de script appelée pour l'instant." : "Cochez « Mesurer les scripts », puis lancez le jeu.");
+	} else if (ImGui::BeginTable("##profil", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
+		ImGui::TableSetupScrollFreeze(0, 1);
+		ImGui::TableSetupColumn("Fonction");
+		ImGui::TableSetupColumn("Script");
+		ImGui::TableSetupColumn("Appels");
+		ImGui::TableSetupColumn("Propre (ms)");
+		ImGui::TableSetupColumn("Total (ms)");
+		ImGui::TableHeadersRow();
+		for (int i = 0; i < profile.size(); i++) {
+			const Dictionary entry = profile[i].as_dictionary();
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::TextUnformatted(entry.get(Variant("function"), Variant("")).as_string().c_str());
+			ImGui::TableNextColumn();
+			ImGui::TextUnformatted(entry.get(Variant("source"), Variant("")).as_string().c_str());
+			ImGui::TableNextColumn();
+			ImGui::Text("%lld", (long long)entry.get(Variant("calls"), Variant((int64_t)0)).as_int());
+			ImGui::TableNextColumn();
+			ImGui::Text("%.3f", (double)entry.get(Variant("self_usec"), Variant((int64_t)0)).as_int() / 1000.0);
+			ImGui::TableNextColumn();
+			ImGui::Text("%.3f", (double)entry.get(Variant("total_usec"), Variant((int64_t)0)).as_int() / 1000.0);
+		}
+		ImGui::EndTable();
+	}
+	ImGui::EndChild();
+	ImGui::End();
+}
+
 void EditorNode::_draw_console_dock() {
+	static ImGuiID console_dock_id = 0;
 	if (focus_console_frames > 0 && --focus_console_frames == 0) {
 		ImGui::SetNextWindowFocus();
 		focus_viewport = true; // la vue 2D (dessinée ensuite) reprend le focus clavier
 	}
 	if (!ImGui::Begin(ICON_DOCK_OUTPUT "  Sortie###Console")) {
+		console_dock_id = ImGui::GetWindowDockID();
 		ImGui::End();
+		_draw_profiler_window(console_dock_id, game.is_running());
 		return;
 	}
+	console_dock_id = ImGui::GetWindowDockID();
 	if (ImGui::Button(ICON_TRASH "  Effacer")) {
 		console_lines.clear();
 	}
@@ -862,6 +931,7 @@ void EditorNode::_draw_console_dock() {
 	}
 	ImGui::EndChild();
 	ImGui::End();
+	_draw_profiler_window(console_dock_id, game.is_running());
 }
 
 // ---------------------------------------------------------------------------

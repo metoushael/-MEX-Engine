@@ -3,6 +3,11 @@
 #include "scene/gui/control.h"
 
 #include "core/config/engine.h"
+#include "core/debug_monitor.h"
+#include "core/os/os.h"
+#include "core/string/translation.h"
+#include "scene/animation/tween.h"
+#include "core/input/input.h"
 #include "core/config/project_settings.h"
 #include "core/io/resource_loader.h"
 #include "scene/main/canvas_item.h"
@@ -116,6 +121,7 @@ void SceneTree::_notify_nodes(int p_kind) {
 
 void SceneTree::physics_process(double p_delta) {
 	Engine *engine = Engine::get_singleton();
+	const uint64_t physics_start = OS::get_singleton()->get_ticks_usec();
 	engine->set_in_physics_frame(true);
 	physics_process_time = p_delta;
 	if (!paused) {
@@ -138,10 +144,24 @@ void SceneTree::physics_process(double p_delta) {
 	_notify_nodes(KIND_PHYSICS);
 	flush_delete_queue();
 	engine->set_in_physics_frame(false);
+	if (!edit_mode && Performance::get_singleton()) {
+		Performance::get_singleton()->set_monitor_value(Performance::TIME_PHYSICS_PROCESS, (double)(OS::get_singleton()->get_ticks_usec() - physics_start) / 1000000.0);
+	}
 }
 
 void SceneTree::process(double p_delta) {
 	process_time = p_delta;
+	const uint64_t process_start = OS::get_singleton()->get_ticks_usec();
+	// Langue changée : les textes affichés se mettent à jour.
+	if (TranslationServer *translations = TranslationServer::get_singleton()) {
+		if (translations->get_generation() != translation_generation) {
+			const bool first = translation_generation == 0;
+			translation_generation = translations->get_generation();
+			if (!first && root) {
+				root->propagate_notification(Node::NOTIFICATION_TRANSLATION_CHANGED);
+			}
+		}
+	}
 	_notify_nodes(KIND_PROCESS);
 
 	if (!paused && !timers.empty()) {
@@ -155,8 +175,27 @@ void SceneTree::process(double p_delta) {
 		}
 	}
 
+	if (!paused && !tweens.empty()) {
+		// Copie : un rappel peut créer ou tuer des tweens.
+		const std::vector<Ref<Tween>> copy = tweens;
+		for (const Ref<Tween> &tween : copy) {
+			if (!tween->is_dead() && !tween->is_running()) {
+				continue; // en pause
+			}
+			if (!const_cast<Tween *>(tween.ptr())->custom_step(p_delta)) {
+				tweens.erase(std::remove(tweens.begin(), tweens.end(), tween), tweens.end());
+			}
+		}
+	}
+
 	flush_delete_queue();
 	_flush_scene_change();
+	if (!edit_mode) {
+		if (Performance *performance = Performance::get_singleton()) {
+			performance->set_monitor_value(Performance::TIME_PROCESS, (double)(OS::get_singleton()->get_ticks_usec() - process_start) / 1000000.0);
+			performance->set_monitor_value(Performance::OBJECT_NODE_COUNT, (double)get_node_count());
+		}
+	}
 
 	// La caméra suit sa cible après tous les déplacements de l'image.
 	if (Object *camera = ObjectDB::get_instance(current_camera)) {
@@ -185,6 +224,10 @@ void SceneTree::input_event(const Ref<InputEvent> &p_event) {
 		if (node && node->inside_tree && node->tree == this && node->can_process()) {
 			node->_call_unhandled_input(p_event);
 		}
+	}
+	// Tab et les flèches déplacent le focus de l'interface si personne n'a utilisé la touche.
+	if (!input_handled && !edit_mode && Control::handle_focus_navigation(this, p_event)) {
+		input_handled = true;
 	}
 }
 
@@ -344,6 +387,13 @@ Ref<SceneTreeTimer> SceneTree::create_timer(double p_seconds) {
 	return timer;
 }
 
+Ref<Tween> SceneTree::create_tween() {
+	Ref<Tween> tween;
+	tween.instantiate();
+	tweens.push_back(tween);
+	return tween;
+}
+
 // ---------------------------------------------------------------------------
 // Groupes
 // ---------------------------------------------------------------------------
@@ -462,7 +512,16 @@ void SceneTree::remove_physics_listener(PhysicsSyncListener *p_listener) {
 	physics_listeners.erase(std::remove(physics_listeners.begin(), physics_listeners.end(), p_listener), physics_listeners.end());
 }
 
+void SceneTree::push_input(const Ref<InputEvent> &p_event) {
+	if (p_event.is_null()) {
+		return;
+	}
+	Input::get_singleton()->parse_input_event(p_event);
+	input_event(p_event);
+}
+
 void SceneTree::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("push_input", "event"), &SceneTree::push_input);
 	ClassDB::bind_method(D_METHOD("get_root"), &SceneTree::get_root);
 	ClassDB::bind_method(D_METHOD("get_current_scene"), &SceneTree::get_current_scene);
 	ClassDB::bind_method(D_METHOD("set_pause", "paused"), &SceneTree::set_pause);
@@ -471,6 +530,7 @@ void SceneTree::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("change_scene_to_file", "path"), &SceneTree::change_scene_to_file);
 	ClassDB::bind_method(D_METHOD("reload_current_scene"), &SceneTree::reload_current_scene);
 	ClassDB::bind_method(D_METHOD("create_timer", "seconds"), &SceneTree::create_timer);
+	ClassDB::bind_method(D_METHOD("create_tween"), &SceneTree::create_tween);
 	ClassDB::bind_method(D_METHOD("get_nodes_in_group", "group"), &SceneTree::get_nodes_in_group);
 	ClassDB::bind_method(D_METHOD("get_first_node_in_group", "group"), &SceneTree::get_first_node_in_group);
 	ClassDB::bind_method(D_METHOD("has_group", "group"), &SceneTree::has_group);

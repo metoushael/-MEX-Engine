@@ -5,7 +5,11 @@
 #include "core/input/input.h"
 #include "core/io/resource_loader.h"
 #include "core/object/script_language.h"
+#include "core/string/translation.h"
 #include "core/string/ustring.h"
+#include "servers/audio_server.h"
+
+#include <SDL.h>
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
 #include "scene/resources/packed_scene.h"
@@ -32,6 +36,41 @@ Error GameRunner::start(const String &p_scene_path, const Size2 &p_viewport_size
 	Input::get_singleton()->release_all();
 	Engine::get_singleton()->set_time_scale(1.0);
 	Engine::get_singleton()->set_physics_ticks_per_second((int)GLOBAL_GET("physics/ticks_per_second").as_int());
+
+	// Bus audio du projet : [audio] buses = ["Musique", "Effets"].
+	if (AudioServer *audio = AudioServer::get_singleton()) {
+		const Array bus_names = GLOBAL_GET("audio/buses").as_array();
+		for (int i = 0; i < bus_names.size(); i++) {
+			if (audio->get_bus_index(bus_names[i].as_string()) < 0) {
+				audio->add_bus(bus_names[i].as_string());
+			}
+		}
+	}
+	// Traductions du projet : [locale] translations = ["res://textes.csv"], fallback = "en",
+	// locale = "fr" pour imposer une langue (sinon celle du système).
+	if (TranslationServer *translations = TranslationServer::get_singleton()) {
+		translations->clear();
+		const Array files = GLOBAL_GET("locale/translations").as_array();
+		for (int i = 0; i < files.size(); i++) {
+			translations->load_csv(files[i].as_string());
+		}
+		const String fallback = ProjectSettings::get_singleton()->get_setting("locale/fallback", Variant("en")).as_string();
+		translations->set_fallback_locale(fallback);
+		String locale = ProjectSettings::get_singleton()->get_setting("locale/locale", Variant("")).as_string();
+		if (locale.empty()) {
+			if (SDL_Locale *preferred = SDL_GetPreferredLocales()) {
+				// Première langue du système pour laquelle le jeu a des textes.
+				for (SDL_Locale *l = preferred; l->language && locale.empty(); l++) {
+					const String name = l->country ? String(l->language) + "_" + l->country : String(l->language);
+					if (!translations->find_closest_locale(name).empty()) {
+						locale = name;
+					}
+				}
+				SDL_free(preferred);
+			}
+		}
+		translations->set_locale(locale.empty() ? fallback : locale);
+	}
 
 	tree = memnew(SceneTree(false));
 	tree->set_viewport_size(p_viewport_size);

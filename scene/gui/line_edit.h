@@ -14,10 +14,8 @@ class LineEdit : public Control {
 	int font_size = 16;
 	Color font_color = Color(1, 1, 1);
 	Color bg_color = Color(0.10f, 0.11f, 0.14f, 0.9f);
-	bool focused = false;
 	int caret = 0; // position en octets dans `text` (toujours sur une frontière UTF-8)
 	double blink_time = 0;
-	static LineEdit *focus_owner;
 
 	int _prev_char(int p_pos) const;
 	int _next_char(int p_pos) const;
@@ -47,15 +45,8 @@ public:
 	void set_bg_color(const Color &p_color);
 	Color get_bg_color() const { return bg_color; }
 
-	void grab_focus();
-	void release_focus();
-	bool has_focus() const { return focused; }
 	void clear() { set_text(""); }
 
 	LineEdit();
-	~LineEdit() {
-		if (focus_owner == this) {
-			focus_owner = nullptr;
-		}
-	}
+	virtual bool _can_focus() const override { return editable; }
 };

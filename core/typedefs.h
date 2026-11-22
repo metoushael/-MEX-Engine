@@ -32,6 +32,11 @@ enum Error {
 	ERR_UNAVAILABLE,
 	ERR_CANT_CREATE,
 	ERR_INVALID_DATA,
+	ERR_CANT_CONNECT,
+	ERR_CANT_RESOLVE,
+	ERR_CONNECTION_ERROR,
+	ERR_ALREADY_IN_USE,
+	ERR_UNCONFIGURED,
 };
 
 // ---------------------------------------------------------------------------

@@ -61,6 +61,17 @@ enum : GLenum {
 	ONE = 1,
 	SRC_ALPHA = 0x0302,
 	ONE_MINUS_SRC_ALPHA = 0x0303,
+	DST_COLOR = 0x0306,
+	FUNC_ADD = 0x8006,
+	FUNC_REVERSE_SUBTRACT = 0x800B,
+	// Types d'uniformes
+	INT = 0x1404,
+	FLOAT_VEC2 = 0x8B50,
+	FLOAT_VEC3 = 0x8B51,
+	FLOAT_VEC4 = 0x8B52,
+	BOOL = 0x8B56,
+	SAMPLER_2D = 0x8B5E,
+	ACTIVE_UNIFORMS = 0x8B86,
 	// Types
 	UNSIGNED_BYTE = 0x1401,
 	UNSIGNED_INT = 0x1405,
@@ -131,6 +142,7 @@ enum : GLenum {
 	X(void, Enable, (GLenum)) \
 	X(void, Disable, (GLenum)) \
 	X(void, Viewport, (GLint, GLint, GLsizei, GLsizei)) \
+	X(void, Scissor, (GLint, GLint, GLsizei, GLsizei)) \
 	X(void, ClearColor, (GLfloat, GLfloat, GLfloat, GLfloat)) \
 	X(void, ClearDepth, (GLdouble)) \
 	X(void, Clear, (GLbitfield)) \
@@ -199,6 +211,9 @@ enum : GLenum {
 	F(void, BindRenderbuffer, (GLenum, GLuint)) \
 	F(void, RenderbufferStorage, (GLenum, GLenum, GLsizei, GLsizei)) \
 	O(void, GenerateMipmap, (GLenum)) \
+	O(void, BlendFuncSeparate, (GLenum, GLenum, GLenum, GLenum)) \
+	O(void, BlendEquation, (GLenum)) \
+	O(void, GetActiveUniform, (GLuint, GLuint, GLsizei, GLsizei *, GLint *, GLenum *, GLchar *)) \
 	O(void, RenderbufferStorageMultisample, (GLenum, GLsizei, GLenum, GLsizei, GLsizei)) \
 	O(void, BlitFramebuffer, (GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum))
 

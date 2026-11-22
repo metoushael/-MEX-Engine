@@ -4,6 +4,7 @@
 #pragma once
 
 #include "scene/main/canvas_item.h"
+#include "scene/resources/theme.h"
 
 class Control : public CanvasItem {
 	GDCLASS(Control, CanvasItem)
@@ -14,6 +15,16 @@ public:
 		NOTIFICATION_MOUSE_ENTER = 41,
 		NOTIFICATION_MOUSE_EXIT = 42,
 		NOTIFICATION_SORT_CHILDREN = 43,
+		NOTIFICATION_FOCUS_ENTER = 44,
+		NOTIFICATION_FOCUS_EXIT = 45,
+		NOTIFICATION_THEME_CHANGED = 46,
+	};
+
+	// Un contrôle qui a le focus reçoit le clavier. Tab et les flèches déplacent le focus.
+	enum FocusMode {
+		FOCUS_NONE, // ne prend jamais le focus
+		FOCUS_CLICK, // au clic seulement
+		FOCUS_ALL, // au clic et au clavier
 	};
 
 	enum Side {
@@ -59,7 +70,17 @@ private:
 	int size_flags_h = SIZE_FILL;
 	int size_flags_v = SIZE_FILL;
 	bool updating_rect = false;
+	int focus_mode = FOCUS_NONE;
+	bool clip_contents = false;
+	Ref<Theme> theme;
+	String tooltip_text;
 
+	static ObjectID focus_owner;
+	static ObjectID modal_owner; // liste déroulante ouverte : elle seule reçoit la souris dans sa zone
+	static Rect2 modal_rect; // en coordonnées d'écran
+
+	void _theme_changed();
+	Variant _theme_lookup(const String &p_name) const;
 	void _compute_offsets(); // marges <- rectangle courant
 	void _apply_rect(const Vector2 &p_position, const Vector2 &p_size);
 
@@ -68,6 +89,15 @@ protected:
 	static void _bind_methods();
 	// Position d'un événement souris dans le repère local du contrôle.
 	Vector2 _event_to_local(const Vector2 &p_screen_pos) const;
+	// Vrai si ce point de l'écran touche le contrôle : dans son rectangle et dans la zone
+	// visible de ses parents qui découpent leur contenu (ScrollContainer...).
+	bool _hit(const Vector2 &p_screen_pos) const;
+	// Un parent peut faire défiler son contenu pour montrer l'enfant qui prend le focus.
+	virtual void _ensure_child_visible(Control *p_child) {}
+	virtual bool _can_focus() const { return true; }
+	// Texte affiché : traduit dans la langue courante si une traduction existe pour cette clé.
+	String atr(const String &p_text) const;
+	void _set_modal(bool p_enabled, const Rect2 &p_screen_rect = Rect2());
 
 public:
 	void set_position(const Vector2 &p_pos);
@@ -124,7 +154,42 @@ public:
 	// Utilisé par les conteneurs : place l'enfant sans toucher à ses ancres.
 	void set_rect_in_container(const Rect2 &p_rect);
 
+	// --- Focus ---
+	void set_focus_mode(int p_mode);
+	int get_focus_mode() const { return focus_mode; }
+	void grab_focus();
+	void release_focus();
+	bool has_focus() const { return focus_owner != 0 && focus_owner == get_instance_id(); }
+	static Control *get_focus_owner();
+	bool is_focusable() const;
+	// Contrôle suivant ou précédent dans l'ordre de l'arbre (touche Tab).
+	Control *find_next_valid_focus() const;
+	Control *find_prev_valid_focus() const;
+	// Voisin le plus proche dans une direction (flèches du clavier).
+	Control *find_focus_neighbor(const Vector2 &p_direction) const;
+	// Navigation au clavier, appelée par l'arbre pour les événements que personne n'a traités.
+	static bool handle_focus_navigation(SceneTree *p_tree, const Ref<InputEvent> &p_event);
+
+	// --- Découpe ---
+	// Rien de ce contrôle ni de ses enfants n'est dessiné hors de son rectangle.
+	void set_clip_contents(bool p_clip);
+	bool is_clipping_contents() const { return clip_contents; }
+
+	// --- Thème ---
+	void set_theme(const Ref<Theme> &p_theme);
+	Ref<Theme> get_theme() const { return theme; }
+	// Valeur du thème le plus proche (ce contrôle, puis ses parents) ; sinon p_own.
+	Color get_theme_color(const String &p_name, const Color &p_own) const;
+	int get_theme_constant(const String &p_name, int p_own) const;
+	int get_theme_font_size(const String &p_name, int p_own) const;
+	Ref<Font> get_theme_font(const String &p_name, const Ref<Font> &p_own) const;
+
+	void set_tooltip_text(const String &p_text) { tooltip_text = p_text; }
+	String get_tooltip_text() const { return tooltip_text; }
+
 	virtual bool _edit_use_rect() const override { return true; }
 	virtual Rect2 _edit_get_rect() const override { return Rect2(Vector2(), size); }
+
+	~Control();
 };
 

@@ -2,11 +2,14 @@
 #include "mexscript.h"
 
 #include "core/config/engine.h"
+#include "core/debug_monitor.h"
+#include "core/os/os.h"
 #include "core/io/file_access.h"
 #include "core/string/ustring.h"
 
 #include <cmath>
 #include <set>
+#include <unordered_map>
 
 namespace {
 
@@ -14,9 +17,39 @@ struct MXError {
 	String message;
 	int line = 0;
 	String function;
+	String stack; // fonctions appelantes, pour le message d'erreur
 };
 
 int call_depth = 0;
+
+// Pile des fonctions de script en cours (tous scripts confondus), pour les messages d'erreur,
+// print_stack() et le profileur.
+struct MXStackEntry {
+	const MexScript *script = nullptr;
+	const String *function = nullptr;
+	const int *line = nullptr; // ligne en cours dans cette fonction
+	uint64_t start_usec = 0;
+	uint64_t children_usec = 0;
+};
+std::vector<MXStackEntry> mx_stack;
+bool mx_profiling = false;
+uint64_t mx_call_count = 0;
+struct MXProfile {
+	String source;
+	String function;
+	uint64_t calls = 0, total_usec = 0, self_usec = 0;
+};
+std::unordered_map<String, MXProfile> mx_profiles;
+
+String mx_describe_callers() {
+	// La fonction fautive est déjà nommée dans le message : seules les appelantes sont listées.
+	String out;
+	for (int i = (int)mx_stack.size() - 2; i >= 0; i--) {
+		const MXStackEntry &e = mx_stack[(size_t)i];
+		out += vformat("\n    appelée par %s (%s:%d)", e.function->c_str(), e.script->get_debug_path().c_str(), *e.line);
+	}
+	return out;
+}
 const int MAX_CALL_DEPTH = 200;
 
 std::unordered_map<String, Ref<MexScriptNativeClass>> native_classes;
@@ -108,6 +141,7 @@ struct MXInterpreter {
 				err.function = frame->function->name;
 			}
 		}
+		err.stack = mx_describe_callers();
 		throw err;
 	}
 
@@ -416,8 +450,34 @@ struct MXInterpreter {
 					interp(p_interp), previous(p_interp->frame) {
 				interp->frame = p_new;
 				call_depth++;
+				MXStackEntry entry;
+				entry.script = interp->script;
+				entry.function = &p_new->function->name;
+				entry.line = &p_new->line;
+				mx_call_count++;
+				if (mx_profiling) {
+					entry.start_usec = OS::get_singleton()->get_ticks_usec();
+				}
+				mx_stack.push_back(entry);
 			}
 			~Scope() {
+				const MXStackEntry entry = mx_stack.back();
+				mx_stack.pop_back();
+				if (entry.start_usec) {
+					const uint64_t elapsed = OS::get_singleton()->get_ticks_usec() - entry.start_usec;
+					const String source = entry.script->get_debug_path();
+					MXProfile &profile = mx_profiles[source + "::" + *entry.function];
+					if (profile.calls == 0) {
+						profile.source = source;
+						profile.function = *entry.function;
+					}
+					profile.calls++;
+					profile.total_usec += elapsed;
+					profile.self_usec += elapsed > entry.children_usec ? elapsed - entry.children_usec : 0;
+					if (!mx_stack.empty()) {
+						mx_stack.back().children_usec += elapsed;
+					}
+				}
 				interp->frame = previous;
 				call_depth--;
 			}
@@ -1093,7 +1153,7 @@ struct MXInterpreter {
 				line = script->parsed.functions[p_function].line;
 				function = script->parsed.functions[p_function].name;
 			}
-			script->report_runtime_error(line, function, err.message);
+			script->report_runtime_error(line, function, err.message + err.stack);
 			if (r_ok) {
 				*r_ok = false;
 			}
@@ -1481,7 +1541,51 @@ Ref<Resource> ResourceFormatLoaderMexScript::load(const String &p_path, Error *r
 
 static ResourceFormatLoaderMexScript *mexscript_loader = nullptr;
 
+static void _mx_get_stack(std::vector<Performance::ScriptStackEntry> *r_stack) {
+	for (int i = (int)mx_stack.size() - 1; i >= 0; i--) {
+		Performance::ScriptStackEntry entry;
+		entry.source = mx_stack[(size_t)i].script->get_debug_path();
+		entry.function = *mx_stack[(size_t)i].function;
+		entry.line = *mx_stack[(size_t)i].line;
+		r_stack->push_back(entry);
+	}
+}
+
+static void _mx_profiling_set(bool p_enabled) {
+	mx_profiling = p_enabled;
+}
+
+static bool _mx_profiling_get() {
+	return mx_profiling;
+}
+
+static void _mx_profiling_data(std::vector<Performance::ScriptProfileEntry> *r_data, bool p_reset) {
+	for (const auto &kv : mx_profiles) {
+		Performance::ScriptProfileEntry entry;
+		entry.source = kv.second.source;
+		entry.function = kv.second.function;
+		entry.calls = kv.second.calls;
+		entry.total_usec = kv.second.total_usec;
+		entry.self_usec = kv.second.self_usec;
+		r_data->push_back(entry);
+	}
+	if (p_reset) {
+		mx_profiles.clear();
+	}
+}
+
 void register_mexscript_types() {
+	Performance::script_get_stack = &_mx_get_stack;
+	Performance::script_profiling_set_enabled = &_mx_profiling_set;
+	Performance::script_profiling_is_enabled = &_mx_profiling_get;
+	Performance::script_profiling_get_data = &_mx_profiling_data;
+	if (Performance::get_singleton()) {
+		Performance::get_singleton()->set_monitor_provider(Performance::SCRIPT_CALL_COUNT, []() {
+			const double count = (double)mx_call_count;
+			mx_call_count = 0;
+			return count;
+		});
+	}
 	GDREGISTER_CLASS(MexScriptNativeClass);
 	GDREGISTER_CLASS(MexScript);
 	mexscript_loader = new ResourceFormatLoaderMexScript;

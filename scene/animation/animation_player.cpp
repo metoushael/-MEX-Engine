@@ -173,7 +173,10 @@ void AnimationPlayer::apply(const String &p_name, double p_time) {
 	if (!root || !has_animation(p_name)) {
 		return;
 	}
-	const Dictionary tracks = _get_animation(p_name).get(Variant("tracks"), Variant(Dictionary())).as_dictionary();
+	const Dictionary animation = _get_animation(p_name);
+	const Dictionary tracks = animation.get(Variant("tracks"), Variant(Dictionary())).as_dictionary();
+	const Dictionary easing = animation.get(Variant("easing"), Variant(Dictionary())).as_dictionary();
+	const bool blending = blend_time > 0 && blend_elapsed < blend_time && p_name == current;
 	for (const auto &kv : tracks.map()) {
 		const String track = kv.first.as_string();
 		const size_t colon = track.rfind(':');
@@ -205,14 +208,61 @@ void AnimationPlayer::apply(const String &p_name, double p_time) {
 		} else {
 			const double t0 = keys[(next - 1) * 2].as_float();
 			const double t1 = keys[next * 2].as_float();
-			const real_t t = t1 > t0 ? (real_t)((p_time - t0) / (t1 - t0)) : 0.0f;
+			real_t t = t1 > t0 ? (real_t)((p_time - t0) / (t1 - t0)) : 0.0f;
+			if (easing.has(kv.first)) {
+				const Array curve = easing.get(kv.first, Variant(Array())).as_array();
+				if (curve.size() >= 2) {
+					t = (real_t)Tween::run_equation((int)curve[0].as_int(), (int)curve[1].as_int(), t);
+				}
+			}
 			value = interpolate(keys[(next - 1) * 2 + 1], keys[next * 2 + 1], t);
+		}
+		if (blending && blend_from.has(kv.first)) {
+			value = interpolate(blend_from.get(kv.first, Variant()), value, (real_t)(blend_elapsed / blend_time));
 		}
 		node->set(property, value);
 	}
 }
 
-void AnimationPlayer::play(const String &p_name) {
+void AnimationPlayer::queue(const String &p_name) {
+	if (!playing) {
+		play(p_name);
+	} else {
+		queued.push_back(p_name);
+	}
+}
+
+void AnimationPlayer::set_track_easing(const String &p_name, const String &p_track, int p_trans, int p_ease) {
+	if (!has_animation(p_name)) {
+		return;
+	}
+	Dictionary animation = _get_animation(p_name);
+	Dictionary easing = animation.get(Variant("easing"), Variant(Dictionary())).as_dictionary();
+	if (p_trans <= 0) {
+		easing.erase(Variant(p_track)); // linéaire : rien à retenir
+	} else {
+		Array curve;
+		curve.push_back(Variant((int64_t)p_trans));
+		curve.push_back(Variant((int64_t)p_ease));
+		easing[Variant(p_track)] = Variant(curve);
+	}
+	animation[Variant("easing")] = Variant(easing);
+	animations[Variant(p_name)] = Variant(animation);
+}
+
+int AnimationPlayer::get_track_transition(const String &p_name, const String &p_track) const {
+	const Dictionary easing = _get_animation(p_name).get(Variant("easing"), Variant(Dictionary())).as_dictionary();
+	const Array curve = easing.get(Variant(p_track), Variant(Array())).as_array();
+	return curve.size() >= 2 ? (int)curve[0].as_int() : 0;
+}
+
+int AnimationPlayer::get_track_ease(const String &p_name, const String &p_track) const {
+	const Dictionary easing = _get_animation(p_name).get(Variant("easing"), Variant(Dictionary())).as_dictionary();
+	const Array curve = easing.get(Variant(p_track), Variant(Array())).as_array();
+	return curve.size() >= 2 ? (int)curve[1].as_int() : (int)Tween::EASE_IN_OUT;
+}
+
+void AnimationPlayer::play(const String &p_name, double p_blend) {
 	const String name = p_name.empty() ? current : p_name;
 	if (!has_animation(name)) {
 		if (!name.empty()) {
@@ -223,6 +273,27 @@ void AnimationPlayer::play(const String &p_name) {
 	if (name != current || !playing) {
 		if (name != current || position >= get_animation_length(name)) {
 			position = 0;
+		}
+		// Fondu : les valeurs actuelles des propriétés animées servent de point de départ.
+		blend_time = std::max(0.0, p_blend);
+		blend_elapsed = 0;
+		blend_from = Dictionary();
+		if (blend_time > 0 && get_parent()) {
+			const Dictionary tracks = _get_animation(name).get(Variant("tracks"), Variant(Dictionary())).as_dictionary();
+			for (const auto &kv : tracks.map()) {
+				const String track = kv.first.as_string();
+				const size_t colon = track.rfind(':');
+				if (colon == String::npos) {
+					continue;
+				}
+				const String path = track.substr(0, colon);
+				Node *node = (path.empty() || path == ".") ? get_parent() : get_parent()->get_node_or_null(path);
+				bool valid = false;
+				const Variant value = node ? node->get(track.substr(colon + 1), &valid) : Variant();
+				if (valid) {
+					blend_from[kv.first] = value;
+				}
+			}
 		}
 		current = name;
 		playing = true;
@@ -249,6 +320,12 @@ void AnimationPlayer::advance(double p_delta) {
 	}
 	const double length = get_animation_length(current);
 	position += p_delta * speed_scale;
+	if (blend_time > 0) {
+		blend_elapsed += std::abs(p_delta * speed_scale);
+		if (blend_elapsed >= blend_time) {
+			blend_time = 0;
+		}
+	}
 	if (position >= length) {
 		if (get_animation_loop(current)) {
 			position = std::fmod(position, length);
@@ -256,7 +333,13 @@ void AnimationPlayer::advance(double p_delta) {
 			position = length;
 			apply(current, position);
 			playing = false;
+			const ObjectID self_id = get_instance_id();
 			emit_signal("animation_finished", current);
+			if (ObjectDB::get_instance(self_id) && !playing && !queued.empty()) {
+				const String next = queued.front();
+				queued.erase(queued.begin());
+				play(next);
+			}
 			return;
 		}
 	}
@@ -292,7 +375,13 @@ void AnimationPlayer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_animation_list"), &AnimationPlayer::get_animation_list);
 	ClassDB::bind_method(D_METHOD("get_animation_length", "name"), &AnimationPlayer::get_animation_length);
 	ClassDB::bind_method(D_METHOD("track_insert_key", "name", "track", "time", "value"), &AnimationPlayer::track_insert_key);
-	ClassDB::bind_method(D_METHOD("play", "name"), &AnimationPlayer::play, DEFVAL(String()));
+	ClassDB::bind_method(D_METHOD("play", "name", "blend"), &AnimationPlayer::play, DEFVAL(String()), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("queue", "name"), &AnimationPlayer::queue);
+	ClassDB::bind_method(D_METHOD("advance", "delta"), &AnimationPlayer::advance);
+	ClassDB::bind_method(D_METHOD("clear_queue"), &AnimationPlayer::clear_queue);
+	ClassDB::bind_method(D_METHOD("set_track_easing", "name", "track", "trans", "ease"), &AnimationPlayer::set_track_easing, DEFVAL((int)Tween::EASE_IN_OUT));
+	ClassDB::bind_method(D_METHOD("get_track_transition", "name", "track"), &AnimationPlayer::get_track_transition);
+	ClassDB::bind_method(D_METHOD("get_track_ease", "name", "track"), &AnimationPlayer::get_track_ease);
 	ClassDB::bind_method(D_METHOD("stop"), &AnimationPlayer::stop);
 	ClassDB::bind_method(D_METHOD("pause"), &AnimationPlayer::pause);
 	ClassDB::bind_method(D_METHOD("is_playing"), &AnimationPlayer::is_playing);

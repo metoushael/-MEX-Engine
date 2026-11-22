@@ -24,6 +24,7 @@ void RenderingServer::finish() {
 		delete kv.second;
 	}
 	items.clear();
+	_free_fx();
 	for (auto &kv : textures) {
 		if (kv.second.tex) {
 			SDL_DestroyTexture(kv.second.tex);
@@ -328,6 +329,10 @@ void RenderingServer::free_rid(RID p_rid) {
 		textures.erase(tex_it);
 		return;
 	}
+	if (materials.count(p_rid.id) || lights.erase(p_rid.id) || occluders.erase(p_rid.id)) {
+		materials.erase(p_rid.id); // le programme OpenGL est libéré avec le contexte
+		return;
+	}
 	auto item_it = items.find(p_rid.id);
 	if (item_it != items.end()) {
 		Item *item = item_it->second;
@@ -366,19 +371,52 @@ void RenderingServer::clear(const Color &p_color) {
 	SDL_RenderClear(renderer);
 }
 
-void RenderingServer::_collect(Item *p_item, const Transform2D &p_xform, const Color &p_modulate, int p_z) {
+void RenderingServer::_collect(Item *p_item, const Transform2D &p_xform, const Color &p_modulate, int p_z, const Rect2 *p_clip) {
 	if (!p_item->visible) {
 		return;
 	}
 	Transform2D xform = p_xform * p_item->xform;
 	Color modulate = p_modulate * p_item->modulate;
 	int z = p_item->z_relative ? p_z + p_item->z_index : p_item->z_index;
+	Rect2 clip_rect;
+	if (p_item->clip) {
+		// Rectangle englobant, à l'écran, du rectangle de découpe (les rotations l'agrandissent).
+		const Rect2 &local = p_item->clip_rect;
+		const Vector2 corners[4] = {
+			xform.xform(local.position),
+			xform.xform(local.position + Vector2(local.size.x, 0)),
+			xform.xform(local.position + local.size),
+			xform.xform(local.position + Vector2(0, local.size.y)),
+		};
+		Vector2 lo = corners[0], hi = corners[0];
+		for (int i = 1; i < 4; i++) {
+			lo.x = std::min(lo.x, corners[i].x);
+			lo.y = std::min(lo.y, corners[i].y);
+			hi.x = std::max(hi.x, corners[i].x);
+			hi.y = std::max(hi.y, corners[i].y);
+		}
+		if (p_clip) {
+			lo.x = std::max(lo.x, p_clip->position.x);
+			lo.y = std::max(lo.y, p_clip->position.y);
+			hi.x = std::min(hi.x, p_clip->position.x + p_clip->size.x);
+			hi.y = std::min(hi.y, p_clip->position.y + p_clip->size.y);
+		}
+		if (hi.x <= lo.x || hi.y <= lo.y) {
+			return; // entièrement découpé
+		}
+		clip_rect = Rect2(lo, hi - lo);
+		p_clip = &clip_rect;
+	}
 	if (!p_item->commands.empty()) {
 		DrawEntry entry;
 		entry.item = p_item;
 		entry.xform = xform;
 		entry.modulate = modulate * p_item->self_modulate;
 		entry.z = z;
+		if (p_clip) {
+			entry.clip = true;
+			entry.clip_rect = *p_clip;
+		}
 		draw_list.push_back(entry);
 	}
 	if (p_item->children_dirty) {
@@ -388,7 +426,7 @@ void RenderingServer::_collect(Item *p_item, const Transform2D &p_xform, const C
 		p_item->children_dirty = false;
 	}
 	for (Item *child : p_item->children) {
-		_collect(child, xform, modulate, z);
+		_collect(child, xform, modulate, z, p_clip);
 	}
 }
 
@@ -398,19 +436,41 @@ void RenderingServer::draw_canvas(RID p_canvas, const Transform2D &p_xform) {
 		return;
 	}
 	draw_list.clear();
-	_collect(canvas, p_xform, Color(1, 1, 1, 1), 0);
+	_collect(canvas, p_xform, Color(1, 1, 1, 1), 0, nullptr);
 	std::stable_sort(draw_list.begin(), draw_list.end(), [](const DrawEntry &a, const DrawEntry &b) {
 		return a.z < b.z;
 	});
 
 	static std::vector<SDL_Vertex> buffer;
+	bool clipping = false;
+	Rect2 current_clip;
 	for (const DrawEntry &entry : draw_list) {
 		if (entry.modulate.a <= 0.0f) {
 			continue;
 		}
 		stat_items++;
+		if (entry.clip != clipping || (entry.clip && (entry.clip_rect.position != current_clip.position || entry.clip_rect.size != current_clip.size))) {
+			clipping = entry.clip;
+			current_clip = entry.clip_rect;
+			if (clipping) {
+				const SDL_Rect r = { (int)std::floor(current_clip.position.x), (int)std::floor(current_clip.position.y), (int)std::ceil(current_clip.size.x), (int)std::ceil(current_clip.size.y) };
+				SDL_RenderSetClipRect(renderer, &r);
+			} else {
+				SDL_RenderSetClipRect(renderer, nullptr);
+			}
+		}
+		CanvasMaterial *material = nullptr;
+		if (entry.item->material.is_valid()) {
+			auto mat_it = materials.find(entry.item->material.id);
+			material = mat_it != materials.end() ? &mat_it->second : nullptr;
+		}
+		const bool use_shader = material && !material->code.empty() && _material_prepare(*material);
 		for (const Command &cmd : entry.item->commands) {
 			if (cmd.indices.empty()) {
+				continue;
+			}
+			if (use_shader && _draw_command_shader(entry, cmd, *material)) {
+				stat_draw_calls++;
 				continue;
 			}
 			buffer.resize(cmd.verts.size());
@@ -427,9 +487,22 @@ void RenderingServer::draw_canvas(RID p_canvas, const Transform2D &p_xform) {
 			if (cmd.texture.is_valid() && !tex) {
 				continue; // texture libérée
 			}
+			const BlendMode blend = material ? material->blend_mode : BLEND_MODE_MIX;
+			if (blend != BLEND_MODE_MIX) {
+				_apply_blend_mode(tex, blend);
+			}
 			SDL_RenderGeometry(renderer, tex, buffer.data(), (int)buffer.size(), cmd.indices.data(), (int)cmd.indices.size());
+			if (blend != BLEND_MODE_MIX) {
+				_apply_blend_mode(tex, BLEND_MODE_MIX);
+			}
 			stat_draw_calls++;
 		}
+	}
+	if (clipping) {
+		SDL_RenderSetClipRect(renderer, nullptr);
+	}
+	if (canvas->lit) {
+		_draw_lighting(canvas, p_xform);
 	}
 }
 

@@ -23,6 +23,8 @@ void ColorRect::_bind_methods() {
 // --- Panel ---
 void Panel::_notification(int p_what) {
 	if (p_what == NOTIFICATION_DRAW) {
+		const Color bg_color = get_theme_color("bg_color", this->bg_color);
+		const Color border_color = get_theme_color("border_color", this->border_color);
 		draw_rect(Rect2(Vector2(), get_size()), bg_color, true);
 		if (border_width > 0 && border_color.a > 0) {
 			draw_rect(Rect2(Vector2(), get_size()), border_color, false, border_width);

@@ -515,6 +515,14 @@ Node *Node::duplicate() const {
 	return copy;
 }
 
+Ref<Tween> Node::create_tween() {
+	Ref<Tween> tween;
+	ERR_FAIL_COND_V_MSG(!tree, tween, "create_tween() : le nœud n'est pas dans l'arbre de scène.");
+	tween = tree->create_tween();
+	tween->bind_node(this);
+	return tween;
+}
+
 void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_name", "name"), &Node::set_name);
 	ClassDB::bind_method(D_METHOD("get_name"), &Node::get_name);
@@ -531,6 +539,7 @@ void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_node", "path"), &Node::get_node);
 	ClassDB::bind_method(D_METHOD("get_node_or_null", "path"), &Node::get_node_or_null);
 	ClassDB::bind_method(D_METHOD("find_child", "name", "recursive"), &Node::find_child, DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("create_tween"), &Node::create_tween);
 	ClassDB::bind_method(D_METHOD("get_path"), &Node::get_path);
 	ClassDB::bind_method(D_METHOD("get_path_to", "node"), &Node::get_path_to);
 	ClassDB::bind_method(D_METHOD("is_ancestor_of", "node"), &Node::is_ancestor_of);

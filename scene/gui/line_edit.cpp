@@ -3,10 +3,10 @@
 #include "core/input/keyboard.h"
 #include "scene/main/scene_tree.h"
 
-LineEdit *LineEdit::focus_owner = nullptr;
 
 LineEdit::LineEdit() {
 	set_size(Vector2(200, 32));
+	set_focus_mode(FOCUS_ALL);
 }
 
 Size2 LineEdit::get_minimum_size() const {
@@ -85,33 +85,6 @@ void LineEdit::set_bg_color(const Color &p_color) {
 	queue_redraw();
 }
 
-void LineEdit::grab_focus() {
-	if (focused || !editable) {
-		return;
-	}
-	// Un seul champ a le focus à la fois.
-	if (focus_owner && focus_owner != this) {
-		focus_owner->release_focus();
-	}
-	focus_owner = this;
-	focused = true;
-	blink_time = 0;
-	queue_redraw();
-	emit_signal("focus_entered");
-}
-
-void LineEdit::release_focus() {
-	if (!focused) {
-		return;
-	}
-	focused = false;
-	if (focus_owner == this) {
-		focus_owner = nullptr;
-	}
-	queue_redraw();
-	emit_signal("focus_exited");
-}
-
 void LineEdit::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
@@ -119,14 +92,11 @@ void LineEdit::_notification(int p_what) {
 			set_process_input(in_game);
 			set_process_internal(in_game);
 		} break;
-		case NOTIFICATION_EXIT_TREE: {
-			focused = false;
-			if (focus_owner == this) {
-				focus_owner = nullptr;
-			}
+		case NOTIFICATION_FOCUS_ENTER: {
+			blink_time = 0;
 		} break;
 		case NOTIFICATION_INTERNAL_PROCESS: {
-			if (focused) {
+			if (has_focus()) {
 				const bool before = std::fmod(blink_time, 1.0) < 0.5;
 				blink_time += get_process_delta_time();
 				if ((std::fmod(blink_time, 1.0) < 0.5) != before) {
@@ -135,10 +105,13 @@ void LineEdit::_notification(int p_what) {
 			}
 		} break;
 		case NOTIFICATION_DRAW: {
+			const int font_size = get_theme_font_size("font_size", this->font_size);
+			const Color font_color = get_theme_color("font_color", this->font_color);
+			const Color bg_color = get_theme_color("bg_color", this->bg_color);
 			const Size2 size = get_size();
 			Ref<Font> f = Font::get_default();
 			draw_rect(Rect2(Vector2(), size), bg_color, true);
-			draw_rect(Rect2(Vector2(), size), focused ? Color(0.45f, 0.65f, 1.0f, 0.95f) : Color(1, 1, 1, 0.25f), false, 1.0f);
+			draw_rect(Rect2(Vector2(), size), has_focus() ? get_theme_color("focus_color", Color(0.45f, 0.65f, 1.0f, 0.95f)) : Color(1, 1, 1, 0.25f), false, 1.0f);
 			const real_t text_height = f->get_height(font_size);
 			const real_t y = std::round((size.y - text_height) * 0.5f);
 			const real_t padding = 6;
@@ -170,7 +143,7 @@ void LineEdit::_notification(int p_what) {
 				}
 				draw_string(f, Vector2(padding + start_x, y), visible, font_size, font_color);
 			}
-			if (focused && std::fmod(blink_time, 1.0) < 0.5) {
+			if (has_focus() && std::fmod(blink_time, 1.0) < 0.5) {
 				const real_t cx = padding + caret_x - scroll;
 				draw_line(Vector2(cx, y), Vector2(cx, y + text_height), font_color, 1.0f);
 			}
@@ -187,7 +160,7 @@ void LineEdit::input(const Ref<InputEvent> &p_event) {
 			return;
 		}
 		const Vector2 local = _event_to_local(mb->get_position());
-		if (has_point(local) && editable) {
+		if (_hit(mb->get_position()) && editable) {
 			grab_focus();
 			// Place le curseur sous la souris.
 			Ref<Font> f = Font::get_default();
@@ -213,8 +186,11 @@ void LineEdit::input(const Ref<InputEvent> &p_event) {
 		return;
 	}
 	InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr());
-	if (!key || !focused || !editable || !key->is_pressed()) {
+	if (!key || !has_focus() || !editable || !key->is_pressed()) {
 		return;
+	}
+	if (key->get_keycode() == KEY_TAB || key->get_keycode() == KEY_UP || key->get_keycode() == KEY_DOWN) {
+		return; // laissées à la navigation entre contrôles
 	}
 	get_tree()->set_input_as_handled();
 	const String typed = key->get_text();
@@ -304,9 +280,6 @@ void LineEdit::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_font_color"), &LineEdit::get_font_color);
 	ClassDB::bind_method(D_METHOD("set_bg_color", "color"), &LineEdit::set_bg_color);
 	ClassDB::bind_method(D_METHOD("get_bg_color"), &LineEdit::get_bg_color);
-	ClassDB::bind_method(D_METHOD("grab_focus"), &LineEdit::grab_focus);
-	ClassDB::bind_method(D_METHOD("release_focus"), &LineEdit::release_focus);
-	ClassDB::bind_method(D_METHOD("has_focus"), &LineEdit::has_focus);
 	ClassDB::bind_method(D_METHOD("clear"), &LineEdit::clear);
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "text"), "set_text", "get_text");
@@ -319,6 +292,4 @@ void LineEdit::_bind_methods() {
 
 	ADD_SIGNAL(MethodInfo("text_changed", PropertyInfo(Variant::STRING, "new_text")));
 	ADD_SIGNAL(MethodInfo("text_submitted", PropertyInfo(Variant::STRING, "text")));
-	ADD_SIGNAL(MethodInfo("focus_entered"));
-	ADD_SIGNAL(MethodInfo("focus_exited"));
 }

@@ -1,14 +1,16 @@
 #include "button.h"
 
+#include "core/input/keyboard.h"
 #include "scene/main/scene_tree.h"
 
 Button::Button() {
 	set_size(Vector2(120, 36));
+	set_focus_mode(FOCUS_ALL);
 }
 
 Size2 Button::get_minimum_size() const {
-	Ref<Font> f = font.is_valid() ? font : Font::get_default();
-	return f->get_string_size(text, font_size) + Size2(16, 8);
+	Ref<Font> f = get_theme_font("font", font);
+	return f->get_string_size(atr(text), get_theme_font_size("font_size", font_size)) + Size2(16, 8);
 }
 
 void Button::_notification(int p_what) {
@@ -27,7 +29,15 @@ void Button::_notification(int p_what) {
 			}
 		} break;
 		case NOTIFICATION_DRAW: {
+			if (_draw_custom()) {
+				break;
+			}
 			const Size2 size = get_size();
+			const Color color_normal = get_theme_color("color_normal", this->color_normal);
+			const Color color_hover = get_theme_color("color_hover", this->color_hover);
+			const Color color_pressed = get_theme_color("color_pressed", this->color_pressed);
+			const Color font_color = get_theme_color("font_color", this->font_color);
+			const int font_size = get_theme_font_size("font_size", this->font_size);
 			Color bg = color_normal;
 			if (disabled) {
 				bg = Color(color_normal.r * 0.7f, color_normal.g * 0.7f, color_normal.b * 0.7f, color_normal.a * 0.7f);
@@ -38,8 +48,12 @@ void Button::_notification(int p_what) {
 			}
 			draw_rect(Rect2(Vector2(), size), bg, true);
 			draw_rect(Rect2(Vector2(), size), Color(1, 1, 1, hovered && !disabled ? 0.35f : 0.12f), false, 1.0f);
+			if (has_focus()) {
+				draw_rect(Rect2(Vector2(1, 1), size - Vector2(2, 2)), get_theme_color("focus_color", Color(0.45f, 0.65f, 1.0f, 0.95f)), false, 2.0f);
+			}
 
-			Ref<Font> f = font.is_valid() ? font : Font::get_default();
+			Ref<Font> f = get_theme_font("font", font);
+			const String text = atr(this->text);
 			Size2 text_size = f->get_string_size(text, font_size);
 			Vector2 pos = ((size - text_size) * 0.5f).round();
 			Color fc = font_color;
@@ -47,6 +61,7 @@ void Button::_notification(int p_what) {
 				fc.a *= 0.5f;
 			}
 			draw_string(f, pos, text, font_size, fc);
+			_draw_extra();
 		} break;
 	}
 }
@@ -55,8 +70,16 @@ void Button::input(const Ref<InputEvent> &p_event) {
 	if (disabled || !is_visible_in_tree()) {
 		return;
 	}
+	if (InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr())) {
+		// Entrée ou Espace : comme un clic, pour le bouton qui a le focus.
+		if (has_focus() && key->is_pressed() && !key->is_echo() && (key->get_keycode() == KEY_ENTER || key->get_keycode() == KEY_SPACE)) {
+			get_tree()->set_input_as_handled();
+			_activate();
+		}
+		return;
+	}
 	if (InputEventMouseMotion *motion = Object::cast_to<InputEventMouseMotion>(p_event.ptr())) {
-		bool inside = has_point(_event_to_local(motion->get_position()));
+		bool inside = _hit(motion->get_position());
 		if (inside != hovered) {
 			hovered = inside;
 			notification(hovered ? NOTIFICATION_MOUSE_ENTER : NOTIFICATION_MOUSE_EXIT);
@@ -69,10 +92,11 @@ void Button::input(const Ref<InputEvent> &p_event) {
 	if (!mb || mb->get_button_index() != MOUSE_BUTTON_LEFT) {
 		return;
 	}
-	const bool inside = has_point(_event_to_local(mb->get_position()));
+	const bool inside = _hit(mb->get_position());
 	if (mb->is_pressed()) {
 		if (inside) {
 			pressing = true;
+			grab_focus();
 			queue_redraw();
 			get_tree()->set_input_as_handled();
 			emit_signal("button_down");
@@ -87,16 +111,22 @@ void Button::input(const Ref<InputEvent> &p_event) {
 		}
 		if (inside) {
 			get_tree()->set_input_as_handled();
-			if (toggle_mode) {
-				toggled_on = !toggled_on;
-				emit_signal("toggled", toggled_on);
-				if (!ObjectDB::get_instance(self_id)) {
-					return;
-				}
-			}
-			emit_signal("pressed");
+			_activate();
 		}
 	}
+}
+
+void Button::_activate() {
+	const ObjectID self_id = get_instance_id();
+	if (toggle_mode) {
+		toggled_on = !toggled_on;
+		queue_redraw();
+		emit_signal("toggled", toggled_on);
+		if (!ObjectDB::get_instance(self_id)) {
+			return;
+		}
+	}
+	emit_signal("pressed");
 }
 
 void Button::set_text(const String &p_text) {

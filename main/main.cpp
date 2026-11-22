@@ -8,6 +8,7 @@
 #include "core/io/file_access.h"
 #include "core/io/pack.h"
 #include "core/os/os.h"
+#include "core/debug_monitor.h"
 #include "core/register_core_types.h"
 #include "core/string/ustring.h"
 #include "main/game_runner.h"
@@ -441,6 +442,10 @@ int Main::run(int p_argc, char **p_argv) {
 	PhysicsServer2D *physics = memnew(PhysicsServer2D);
 	PhysicsServer3D *physics_3d = new PhysicsServer3D;
 	AudioServer *audio = memnew(AudioServer);
+	Engine::get_singleton()->add_singleton("AudioServer", audio);
+	Performance::get_singleton()->set_monitor_provider(Performance::RENDER_2D_DRAW_CALLS, [rendering]() { return (double)rendering->get_stat_draw_calls(); });
+	Performance::get_singleton()->set_monitor_provider(Performance::RENDER_2D_ITEMS, [rendering]() { return (double)rendering->get_stat_items(); });
+	Performance::get_singleton()->set_monitor_provider(Performance::AUDIO_ACTIVE_VOICES, [audio]() { return (double)audio->get_active_voice_count(); });
 
 	DisplayServer::WindowOptions options;
 	options.hidden = cmd.hidden;
@@ -491,6 +496,11 @@ int Main::run(int p_argc, char **p_argv) {
 		}
 		if (audio->init() != OK) {
 			print_warning("Audio indisponible : le jeu tournera sans son.");
+		}
+		// Bus audio du projet : [audio] buses = ["Musique", "Effets"] dans project.mex.
+		const Array bus_names = GLOBAL_GET("audio/buses").as_array();
+		for (int i = 0; i < bus_names.size(); i++) {
+			audio->add_bus(bus_names[i].as_string());
 		}
 
 		// Icône de la fenêtre : celle du projet (application/icon) pour un jeu, sinon celle de MEX.

@@ -101,7 +101,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.5.1). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.6.0). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -364,13 +364,66 @@ Les **conteneurs** placent eux-mêmes leurs enfants :
 | `VBoxContainer`, `HBoxContainer` | En colonne ou en ligne, avec `separation` et `alignment` |
 | `MarginContainer` | Enfant réduit par des marges sur les quatre côtés |
 | `CenterContainer` | Enfant centré, à sa taille minimale |
+| `GridContainer` | En grille de `columns` colonnes, ligne après ligne |
+| `ScrollContainer` | Montre une partie d'un contenu plus grand et le fait défiler (molette, barre, focus) |
+| `TabContainer` | Une page par enfant ; le nom de l'enfant est le titre de l'onglet |
 
 Dans un conteneur, *Size Flags* règle le comportement de chaque enfant : remplir (*Fill*),
 prendre la place restante (*Expand Fill*), ou garder sa taille minimale au début, au centre
 ou à la fin (*Shrink ...*).
 
 `LineEdit` est un champ de saisie sur une ligne : signaux `text_changed` et `text_submitted`
-(touche Entrée), propriétés `text`, `placeholder_text`, `max_length`. Un clic lui donne le focus.
+(touche Entrée), propriétés `text`, `placeholder_text`, `max_length`.
+
+Autres contrôles : `CheckBox` (case à cocher), `TextureButton` (une image par état),
+`HSlider` et `VSlider` (`min_value`, `max_value`, `step`, `value`, signal `value_changed`),
+`OptionButton` (liste déroulante : `add_item`, `selected`, signal `item_selected`),
+`ItemList` (liste à sélection : signaux `item_selected` et `item_activated`),
+`NinePatchRect` (cadre étirable dont les coins gardent leur taille), `HSeparator`, `VSeparator`.
+
+### Focus et clavier
+
+Un seul contrôle a le **focus** à la fois ; il reçoit le clavier et s'entoure d'un liseré.
+Les boutons, champs de saisie, curseurs et listes le prennent au clic.
+
+| Touche | Effet |
+| --- | --- |
+| Tab, Maj + Tab | Contrôle suivant ou précédent, dans l'ordre de l'arbre de scène |
+| Flèches | Contrôle le plus proche dans cette direction |
+| Entrée, Espace | Active le bouton qui a le focus |
+| Échap | Retire le focus |
+
+En script : `grab_focus()`, `release_focus()`, `has_focus()`, signaux `focus_entered` et
+`focus_exited`, propriété `focus_mode` (`FOCUS_NONE`, `FOCUS_CLICK`, `FOCUS_ALL`). Pour un menu
+utilisable sans souris, appelez `grab_focus()` sur le premier bouton dans `_ready()`. Un
+contrôle qui prend le focus dans un `ScrollContainer` est amené dans la zone visible.
+
+Un bouton cliqué garde le focus : Espace ou Entrée l'activent de nouveau. Pour un bouton affiché
+pendant le jeu (pause, inventaire), réglez *Focus Mode* sur *None* afin que la touche de saut ne
+le déclenche pas.
+
+`clip_contents` découpe le dessin des enfants aux limites du contrôle ; un contrôle masqué par
+ce découpage ne reçoit pas les clics.
+
+### Thèmes
+
+Une ressource `Theme` donne leurs couleurs, tailles de texte et polices à un contrôle et à
+tous ses descendants. Une entrée se range par classe ; une classe hérite des entrées de sa
+classe de base (`"Control"` vaut pour tous).
+
+```gdscript
+var theme = Theme.new()
+theme.default_font_size = 18
+theme.set_color("font_color", "Label", Color(1, 0.9, 0.6))
+theme.set_color("color_normal", "Button", Color(0.2, 0.1, 0.3))
+theme.set_color("focus_color", "Control", Color(1, 1, 0))
+$Menu.theme = theme
+```
+
+Noms utilisés : `font_color`, `font_size`, `font` (tous les textes) ; `color_normal`,
+`color_hover`, `color_pressed` (boutons) ; `bg_color`, `border_color` (panneaux, champs,
+listes) ; `fill_color`, `grabber_color` (curseurs) ; `focus_color` (liseré du focus).
+Une police réglée sur le contrôle lui-même l'emporte sur celle du thème.
 
 ## Animation
 
@@ -394,7 +447,185 @@ Pendant l'aperçu, les propriétés animées prennent les valeurs de l'animation
 retrouvent leur valeur d'origine avec *Terminer l'aperçu* et ne sont jamais enregistrées ainsi.
 En script : `$AnimationPlayer.play("ouvrir")`, `stop()`, `seek(temps)`, signal `animation_finished`.
 
+- **Fondu** : `play("course", 0.2)` part des valeurs en cours et rejoint la nouvelle animation
+  en 0,2 s, sans saut visible.
+- **File d'attente** : `queue("repos")` lance l'animation quand celle en cours se termine.
+- **Courbe d'accélération d'une piste** :
+  `set_track_easing("ouvrir", ".:position", Tween.TRANS_BACK, Tween.EASE_OUT)` remplace
+  l'interpolation linéaire entre les clés de cette piste (réglage par script uniquement : le
+  dock *Animation* ne le propose pas encore).
+
+### Tweens
+
+Un **tween** anime une propriété par code, sans préparer d'animation :
+
+```gdscript
+var t = create_tween()
+t.tween_property($Sprite, "position", Vector2(300, 100), 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+t.parallel().tween_property($Sprite, "modulate:a", 0.0, 0.5)   # en même temps que l'étape précédente
+t.tween_interval(0.2)
+t.tween_callback($Sprite.queue_free)
+```
+
+Les étapes s'enchaînent ; `parallel()` fait démarrer la suivante avec la précédente.
+`"position:x"` ou `"modulate:a"` anime une seule composante. Étapes : `tween_property`
+(avec `.from(valeur)`, `.as_relative()`, `.set_delay(s)`), `tween_interval`, `tween_callback`,
+`tween_method(fonction, de, à, durée)`. Réglages : `set_trans`, `set_ease`, `set_loops(n)`
+(0 : sans fin), `set_speed_scale`, `set_parallel`. Contrôle : `pause()`, `play()`, `kill()`,
+signal `finished`. Un tween créé par `create_tween()` sur un nœud s'arrête quand ce nœud est supprimé.
+
+Courbes : `TRANS_LINEAR`, `SINE`, `QUAD`, `CUBIC`, `QUART`, `QUINT`, `EXPO`, `CIRC`, `BACK`,
+`ELASTIC`, `BOUNCE` ; sens : `EASE_IN`, `EASE_OUT`, `EASE_IN_OUT`, `EASE_OUT_IN`.
+
 ![Dock Animation](docs/animation.png)
+
+## Graphismes 2D : particules, shaders, lumières
+
+**`CPUParticles2D`** émet des particules : `amount`, `lifetime`, `direction`, `spread`,
+`initial_velocity_min` / `max`, `gravity`, `color` et `color_end` (fondu de couleur sur la vie).
+
+**Mode de fusion** : une ressource `CanvasItemMaterial` dans la propriété `material` d'un
+nœud 2D choisit `blend_mode` : *Mix*, *Add* (lumières, feu), *Sub*, *Mul*.
+
+**Shaders** : `ShaderMaterial` exécute un `Shader` écrit comme ceux de Godot
+(`shader_type canvas_item`), dans la ressource ou dans un fichier `.shader` :
+
+```glsl
+shader_type canvas_item;
+uniform float force = 0.5;
+
+void fragment() {
+	vec4 c = texture(TEXTURE, UV);
+	float gris = dot(c.rgb, vec3(0.3, 0.59, 0.11));
+	COLOR = vec4(mix(c.rgb, vec3(gris), force), c.a) * COLOR;
+}
+```
+
+Disponibles : `vertex()` et `fragment()`, `VERTEX`, `UV`, `COLOR`, `TEXTURE`,
+`TEXTURE_PIXEL_SIZE`, `SCREEN_UV`, `SCREEN_PIXEL_SIZE`, `TIME`, et des `uniform` réglés par
+`set_shader_parameter("force", 1.0)`. Une erreur de compilation s'affiche dans la sortie et se
+lit avec `get_shader_error()`.
+
+**Lumières** : `CanvasModulate` assombrit la scène, `PointLight2D` l'éclaire (`color`,
+`energy`, `texture_scale`, `shadow_enabled`) et `LightOccluder2D` (`polygon`) projette des ombres.
+
+**Découpage** : `set_clip_rect(true, Rect2(...))` limite le dessin d'un nœud et de ses enfants.
+
+Les shaders et les lumières demandent le rendu OpenGL (celui par défaut). Avec un autre pilote
+(`MEX_RENDER_DRIVER`, ou repli logiciel), ils sont ignorés et le reste s'affiche normalement.
+
+## Audio : formats, bus et effets
+
+`load()` lit les sons **WAV**, **Ogg Vorbis** et **MP3**. `AudioStreamPlayer` les joue ;
+`AudioStreamPlayer2D` atténue le volume avec la distance à la caméra (`max_distance`,
+`attenuation`) et place le son à gauche ou à droite (`panning_strength`).
+
+Chaque lecteur sort sur un **bus** (`bus = "Musique"`). Un bus a son volume, peut être muet et
+porte une chaîne d'**effets** ; tous se mélangent dans le bus `Master`. Les bus du projet se
+déclarent dans `project.mex` :
+
+```ini
+[audio]
+buses = ["Musique", "Effets"]
+```
+
+```gdscript
+var i = AudioServer.get_bus_index("Musique")
+AudioServer.set_bus_volume_db(i, -6.0)
+var echo = AudioEffectDelay.new()
+echo.delay_ms = 250
+AudioServer.add_bus_effect(i, echo)
+```
+
+Effets : `AudioEffectAmplify`, `AudioEffectLowPassFilter`, `AudioEffectHighPassFilter`,
+`AudioEffectDelay`, `AudioEffectReverb`, `AudioEffectDistortion`, `AudioEffectLimiter`.
+`AudioServer.get_bus_peak_volume_db(i)` donne le niveau de crête (pour un vumètre). Les bus
+se règlent par script ou par `project.mex` : l'éditeur n'a pas encore de table de mixage.
+
+## Traductions
+
+Les textes se rangent dans un tableau CSV : la clé dans la première colonne, puis une colonne
+par langue.
+
+```csv
+keys,fr,en
+BONJOUR,Bonjour,Hello
+QUITTER,Quitter,Quit
+```
+
+```ini
+[locale]
+translations = ["res://textes.csv"]
+fallback = "en"
+```
+
+- `tr("BONJOUR")` renvoie le texte dans la langue courante.
+- Les textes des `Label`, `Button`, `CheckBox`, `OptionButton`, `ItemList` et les titres d'onglets
+  sont traduits tout seuls quand ils sont une clé du tableau, et se mettent à jour au changement
+  de langue.
+- La langue de départ est celle du système si le jeu la possède, sinon `fallback` ; `locale = "fr"`
+  dans `[locale]` l'impose. En jeu : `TranslationServer.set_locale("en")`.
+- Un texte absent dans une langue est pris dans la langue de repli ; une clé inconnue est
+  affichée telle quelle. `fr_CA` utilise `fr` s'il n'a pas sa propre colonne.
+
+## Recherche de chemin
+
+`AStarGrid2D` trouve un chemin sur une grille (niveaux en cases, `TileMap`) :
+
+```gdscript
+var grille = AStarGrid2D.new()
+grille.size = Vector2(40, 30)
+grille.cell_size = Vector2(16, 16)
+grille.set_point_solid(Vector2(5, 3))                # un mur
+var chemin = grille.get_point_path(Vector2(0, 0), Vector2(12, 8))   # positions à suivre
+```
+
+`diagonal_mode` autorise ou non les diagonales, `set_point_weight_scale` rend une case plus
+coûteuse (boue, eau). `AStar2D` fait de même sur un graphe de points reliés à la main
+(`add_point`, `connect_points`, `get_id_path`, `get_closest_point`). Un chemin vide signifie
+que la cible est inaccessible.
+
+## Réseau
+
+`TCPServer` et `StreamPeerTCP` ouvrent des connexions fiables, `PacketPeerUDP` envoie des
+paquets rapides sans garantie d'arrivée. Rien ne bloque le jeu : on interroge l'état à chaque image.
+
+```gdscript
+# Serveur
+var serveur = TCPServer.new()
+serveur.listen(4242)
+# ... à chaque image :
+if serveur.is_connection_available():
+	joueur = serveur.take_connection()
+while joueur != null and joueur.has_var():
+	print(joueur.get_var())
+
+# Client
+var client = StreamPeerTCP.new()
+client.connect_to_host("192.168.1.10", 4242)
+# ... une fois get_status() == StreamPeerTCP.STATUS_CONNECTED :
+client.put_var({"action": "saut", "force": 12.5})
+```
+
+`put_var` / `get_var` transmettent nombres, textes, vecteurs, tableaux et dictionnaires ; les
+objets ne sont jamais reconstruits à la réception. `put_data` / `get_data` échangent des octets
+bruts (ne mélangez pas les deux sur une même connexion).
+
+## Débogage et mesures
+
+- Une erreur de script indique la fonction, la ligne et **les fonctions appelantes**.
+- `print_stack()` affiche la pile d'appels, `get_stack()` la renvoie.
+- Le dock **Profileur** (onglet à côté de *Sortie*) liste le temps passé dans chaque fonction
+  de script du jeu lancé dans l'éditeur : cochez *Mesurer les scripts*, puis lancez le jeu.
+
+  ![Dock Profileur](docs/profileur.png)
+
+- En script : `Performance.get_monitor(Performance.TIME_FPS)` (aussi `TIME_PROCESS`,
+  `TIME_PHYSICS_PROCESS`, `OBJECT_COUNT`, `OBJECT_NODE_COUNT`, `RENDER_2D_DRAW_CALLS`,
+  `RENDER_2D_ITEMS`, `AUDIO_ACTIVE_VOICES`), `Performance.set_script_profiling(true)` et
+  `Performance.get_script_profile()`.
+- `get_tree().push_input(evenement)` envoie un `InputEventKey` ou `InputEventMouseButton`
+  fabriqué par script (essais automatiques d'une interface).
 
 ## Exporter un jeu
 
@@ -512,17 +743,21 @@ Fonctions appelées par le moteur : `_init`, `_ready`, `_process(delta)`,
 | Famille | Classes |
 | --- | --- |
 | Base | `Node`, `Timer`, `CanvasLayer`, `AudioStreamPlayer`, `AnimationPlayer` |
+| Effets 2D | `CPUParticles2D`, `PointLight2D`, `LightOccluder2D`, `CanvasModulate`, `AudioStreamPlayer2D` |
 | 2D | `Node2D`, `Marker2D`, `Sprite2D`, `AnimatedSprite2D`, `Camera2D`, `TileMap`, `RayCast2D` |
 | Physique 2D | `StaticBody2D`, `CharacterBody2D`, `RigidBody2D`, `Area2D`, `CollisionShape2D` |
 | Formes 2D | `RectangleShape2D`, `CircleShape2D`, `CapsuleShape2D`, `ConvexPolygonShape2D` |
 | 3D | `Node3D`, `Marker3D`, `MeshInstance3D`, `Camera3D`, `DirectionalLight3D`, `OmniLight3D`, `SpotLight3D`, `WorldEnvironment`, `RayCast3D` |
 | Physique 3D | `StaticBody3D`, `CharacterBody3D`, `RigidBody3D`, `Area3D`, `CollisionShape3D` |
 | Formes 3D | `SphereShape3D`, `BoxShape3D`, `CapsuleShape3D` |
-| Interface | `Control`, `Label`, `Button`, `LineEdit`, `Panel`, `ColorRect`, `TextureRect`, `ProgressBar` |
-| Conteneurs | `VBoxContainer`, `HBoxContainer`, `MarginContainer`, `CenterContainer` |
+| Interface | `Control`, `Label`, `Button`, `CheckBox`, `TextureButton`, `OptionButton`, `LineEdit`, `HSlider`, `VSlider`, `ItemList`, `Panel`, `ColorRect`, `TextureRect`, `NinePatchRect`, `ProgressBar`, `HSeparator`, `VSeparator` |
+| Conteneurs | `VBoxContainer`, `HBoxContainer`, `GridContainer`, `MarginContainer`, `CenterContainer`, `ScrollContainer`, `TabContainer` |
+| Ressources et outils | `Theme`, `Shader`, `ShaderMaterial`, `CanvasItemMaterial`, `Tween`, `AStar2D`, `AStarGrid2D`, `StreamPeerTCP`, `TCPServer`, `PacketPeerUDP`, effets audio `AudioEffect...` |
+| Singletons | `Input`, `InputMap`, `Engine`, `OS`, `Time`, `ProjectSettings`, `AudioServer`, `TranslationServer`, `Performance` |
 
-Formats de fichiers : images PNG, JPEG, BMP, TGA et GIF, sons WAV, polices TTF, maillages OBJ, scènes `.scn`,
-ressources `.res`, scripts `.mx`, archives de jeu `.pck`.
+Formats de fichiers : images PNG, JPEG, BMP, TGA et GIF, sons WAV, Ogg Vorbis et MP3, polices TTF,
+maillages OBJ, shaders `.shader`, traductions `.csv`, scènes `.scn`, ressources `.res`, scripts `.mx`,
+archives de jeu `.pck`.
 
 ## Organisation du code
 
@@ -539,6 +774,7 @@ ressources `.res`, scripts `.mx`, archives de jeu `.pck`.
 | `branding/` | Identité visuelle : pack de logo, guide d'usage, icônes de l'application et le programme qui les dérive des SVG |
 | `.github/workflows/` | Compilation et publication automatiques (GitHub Actions) |
 | `projects/` | Projets d'exemple |
+| `tests/essais/` | Essais automatiques du moteur (voir *Tests automatiques*) |
 | `thirdparty/` | Bibliothèques tierces |
 
 Le code suit les conventions de Godot : `GDCLASS`, `_bind_methods`, `ClassDB::bind_method`,
@@ -547,7 +783,9 @@ français.
 
 ## Limites actuelles
 
-- 2D : rendu par `SDL_Renderer`, sans shaders ni lumières.
+- 2D : shaders et lumières seulement avec le rendu OpenGL ; pas de cartes de normales, de
+  `BackBufferCopy`, de particules sur carte graphique ni de lumière directionnelle 2D ; les
+  ombres 2D ont un bord net.
 - 3D : rendu direct en OpenGL 2.1, sans réflexions du ciel, éclairage global ni
   post-traitement ; seule la lumière directionnelle projette des ombres ; pas de shaders
   écrits par l'utilisateur ; pas de squelettes ni d'animation de maillages ; import OBJ
@@ -558,13 +796,26 @@ français.
 - Éditeur 3D : une seule vue, pas de sélection multiple, pas d'aperçu de la caméra du jeu.
   Dans l'onglet *Jeu*, la souris n'est pas capturée (`Input.set_mouse_mode` n'agit que dans
   le jeu lancé hors de l'éditeur) : la caméra suit la souris tant qu'elle survole l'image.
-- Interface de jeu : pas de thèmes, de défilement (`ScrollContainer`), de grille ni de texte
-  multiligne éditable ; le focus clavier ne passe pas d'un contrôle à l'autre avec Tab.
-- Animation : interpolation linéaire uniquement, pas de pistes d'appel de méthode ni de
-  fondu entre deux animations.
+- Interface de jeu : pas de texte multiligne éditable (`TextEdit`), de texte enrichi
+  (`RichTextLabel`), d'arbre (`Tree`) ni de fenêtres de dialogue ; un thème règle les couleurs,
+  tailles et polices mais pas des boîtes de style dessinées (`StyleBox`) ; pas d'éditeur de
+  thème ; `tooltip_text` est enregistré mais aucune infobulle ne s'affiche ; `ScrollContainer`
+  n'a qu'une barre verticale ; pas de manette pour la navigation.
+- Animation : pas de pistes d'appel de méthode, pas d'`AnimationTree` (mélange de plusieurs
+  animations par graphe), pas de courbes de Bézier ; la courbe d'une piste se règle par script.
+- Traductions : fichiers CSV seulement (pas de `.po`), pas de pluriels ni de textes de droite à gauche.
+- Recherche de chemin : grilles et graphes ; pas de maillage de navigation
+  (`NavigationRegion2D`), d'agents ni d'évitement entre personnages.
+- Réseau : sockets TCP et UDP en IPv4, sans chiffrement ; pas de HTTP, de WebSocket ni de
+  multijoueur de haut niveau (appels à distance, synchronisation de nœuds).
+- Débogage : pas de points d'arrêt, d'exécution pas à pas ni d'inspection des variables en
+  cours de jeu ; le profileur mesure les scripts, pas le détail du moteur.
+- Pas de système d'extensions (modules chargés à l'exécution, greffons de l'éditeur).
+- Export : Windows, Linux et macOS seulement ; pas d'export Web ni Android.
 - Export : pas d'icône d'application, de paquet `.app` pour macOS ni de compression de l'archive ;
   les exécutables ne sont pas signés.
-- Pas de particules. Audio : WAV uniquement.
+- Audio : pas de table de mixage dans l'éditeur, pas d'enregistrement, pas de son 3D ; un
+  fichier Ogg ou MP3 est décodé en entier au chargement (pas de lecture en flux).
 - Aperçus : pas d'écoute des sons (forme d'onde seulement) ; au plus 96 miniatures 3D ou de
   scènes à la fois, les fichiers suivants gardent leur icône ; l'aperçu d'une scène montre
   son état initial, sans exécuter ses scripts.
@@ -588,7 +839,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.5.1"
+git commit -m "MEX 0.6.0"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -598,7 +849,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Archives `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.5.1**. Archives `mex-v0.5.1-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.6.0**. Archives `mex-v0.6.0-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -608,22 +859,22 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.5.1
-  git push origin v0.5.1
+  git tag v0.6.0
+  git push origin v0.6.0
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.5.1` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.6.0` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.5.1-windows-x86_64.zip`
-- `mex-v0.5.1-linux-x86_64.tar.gz`
-- `mex-v0.5.1-macos-universal.tar.gz`
+- `mex-v0.6.0-windows-x86_64.zip`
+- `mex-v0.6.0-linux-x86_64.tar.gz`
+- `mex-v0.6.0-macos-universal.tar.gz`
 - `SHA256SUMS.txt`, les empreintes des archives.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.5.1-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.6.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 archives sont tout de même publiées et la note de version le signale.
 
 **Si rien n'apparaît dans Releases :**
@@ -653,6 +904,21 @@ d'OpenGL : cet essai couvre les scripts et la physique, pas le rendu 3D. Sous Li
 logiciel de Mesa, et échoue si le rendu 3D ne démarre pas.
 
 ## Tests automatiques
+
+`tests/essais/` est un projet qui vérifie le moteur de lui-même (audio, particules, shaders,
+lumières, bus, interface, tweens, traductions, recherche de chemin, réseau local, profileur) :
+
+```sh
+SDL_AUDIODRIVER=dummy xvfb-run -a mex-jeu --path tests/essais --quit-after 60
+```
+
+Chaque vérification affiche `OK` ou `ECHEC`, la dernière ligne donne le bilan
+(`BILAN  70 réussis, 0 échecs`). La ligne d'erreur « Shader 2D ... 'inconnu' undeclared » est
+attendue : un essai vérifie qu'un shader faux est bien signalé.
+
+![Scène des essais : interface, shader, particules, lumière et ombre](docs/essais.png)
+
+### Entrées simulées
 
 La variable d'environnement `MEX_EDITOR_TEST_SCRIPT` désigne un fichier d'entrées simulées,
 une commande par ligne sous la forme `<image> <commande> [arguments]` :
@@ -740,6 +1006,7 @@ Depuis les sources, ces deux fichiers sont `branding/app/mex-icone-256.png` et
 | --- | --- |
 | [SDL2](https://www.libsdl.org) | zlib |
 | [Dear ImGui](https://github.com/ocornut/imgui) 1.93 (branche docking) | MIT, voir `thirdparty/imgui/LICENSE.txt` |
-| [stb_image, stb_truetype](https://github.com/nothings/stb) | Domaine public ou MIT, voir `thirdparty/stb/LICENSE.txt` |
+| [stb_image, stb_truetype, stb_vorbis](https://github.com/nothings/stb) | Domaine public ou MIT, voir `thirdparty/stb/LICENSE.txt` |
+| [dr_mp3](https://github.com/mackron/dr_libs) (David Reid) | Domaine public ou MIT-0, voir `thirdparty/dr_libs/LICENSE` |
 | Police Roboto Medium (Christian Robertson) | Apache 2.0, voir `thirdparty/fonts/LICENSE.txt` |
 | Icônes [Lucide](https://lucide.dev) 0.469, celles de l'éditeur | ISC, voir `thirdparty/lucide/LICENSE.txt` |

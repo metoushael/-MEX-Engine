@@ -452,7 +452,7 @@ static int _file_kind(const String &p_path) {
 	if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "tga" || ext == "gif") {
 		return 3;
 	}
-	if (ext == "wav") {
+	if (ext == "wav" || ext == "ogg" || ext == "mp3") {
 		return 4;
 	}
 	if (ext == "obj") {

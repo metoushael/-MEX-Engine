@@ -1,0 +1,6 @@
+[mex_scene format=1]
+
+[ext_resource type="MexScript" path="res://essais.mx" id="1"]
+
+[node name="Essais" type="Node2D"]
+script = ExtResource("1")

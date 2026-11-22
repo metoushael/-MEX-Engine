@@ -7,8 +7,8 @@ Label::Label() {
 }
 
 Size2 Label::get_minimum_size() const {
-	Ref<Font> f = font.is_valid() ? font : Font::get_default();
-	return f->get_string_size(text, font_size);
+	Ref<Font> f = get_theme_font("font", font);
+	return f->get_string_size(atr(text), get_theme_font_size("font_size", font_size));
 }
 
 Rect2 Label::_edit_get_rect() const {
@@ -22,7 +22,10 @@ void Label::_notification(int p_what) {
 		if (text.empty()) {
 			return;
 		}
-		Ref<Font> f = font.is_valid() ? font : Font::get_default();
+		Ref<Font> f = get_theme_font("font", font);
+		const String text = atr(this->text);
+		const int font_size = get_theme_font_size("font_size", this->font_size);
+		const Color font_color = get_theme_color("font_color", this->font_color);
 		const Size2 size = get_size();
 		const real_t line_height = f->get_height(font_size);
 		std::vector<String> lines = str_split(text, "\n", true);

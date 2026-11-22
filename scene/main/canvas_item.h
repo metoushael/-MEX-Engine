@@ -2,6 +2,7 @@
 #pragma once
 
 #include "scene/main/node.h"
+#include "scene/resources/canvas_material.h"
 #include "scene/resources/font.h"
 #include "scene/resources/texture.h"
 #include "servers/rendering_server.h"
@@ -26,6 +27,7 @@ private:
 	bool z_as_relative = true;
 	bool pending_redraw = false;
 	bool drawing = false;
+	Ref<CanvasItemMaterial> material;
 
 	static std::vector<ObjectID> redraw_queue;
 
@@ -63,6 +65,11 @@ public:
 	int get_z_index() const { return z_index; }
 	void set_z_as_relative(bool p_relative);
 	bool is_z_relative() const { return z_as_relative; }
+	// Matériau : mode de mélange (CanvasItemMaterial) ou shader (ShaderMaterial).
+	void set_material(const Ref<CanvasItemMaterial> &p_material);
+	Ref<CanvasItemMaterial> get_material() const { return material; }
+	// Découpe ce nœud et ses enfants à un rectangle exprimé dans son repère.
+	void set_clip_rect(bool p_enabled, const Rect2 &p_rect = Rect2());
 
 	// --- Dessin (valide uniquement pendant NOTIFICATION_DRAW / _draw) ---
 	void queue_redraw();

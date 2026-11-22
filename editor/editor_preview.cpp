@@ -107,7 +107,7 @@ int EditorNode::_get_preview_kind(const String &p_path) {
 	if (ext == "scn") {
 		return PREVIEW_SCENE;
 	}
-	if (ext == "wav") {
+	if (ext == "wav" || ext == "ogg" || ext == "mp3") {
 		return PREVIEW_AUDIO;
 	}
 	if (ext == "mx" || ext == "txt" || ext == "md" || ext == "json" || ext == "cfg" || ext == "mex" || ext == "res") {
@@ -346,7 +346,7 @@ void EditorNode::_generate_preview(const String &p_path, FilePreview &r_preview)
 			}
 		} break;
 		case PREVIEW_AUDIO: {
-			Ref<AudioStreamWAV> stream = ResourceLoader::load(p_path);
+			Ref<AudioStream> stream = ResourceLoader::load(p_path);
 			if (stream.is_valid()) {
 				const AudioServer::SampleData samples = stream->get_samples();
 				const size_t frames = samples ? samples->size() / 2 : 0;

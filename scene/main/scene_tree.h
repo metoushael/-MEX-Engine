@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/object/ref_counted.h"
+#include "scene/animation/tween.h"
 #include "scene/main/node.h"
 #include "servers/rendering_server.h"
 #include "servers/rendering_server_3d.h"
@@ -52,9 +53,11 @@ private:
 	bool debug_collisions_hint = false;
 	double process_time = 0;
 	double physics_process_time = 0;
+	uint64_t translation_generation = 0;
 
 	std::map<String, std::vector<Node *>> group_map;
 	std::vector<Ref<SceneTreeTimer>> timers;
+	std::vector<Ref<Tween>> tweens;
 	static std::vector<ObjectID> delete_queue;
 
 	RID canvas;
@@ -109,6 +112,8 @@ public:
 	void physics_process(double p_delta);
 	void process(double p_delta);
 	void input_event(const Ref<InputEvent> &p_event);
+	// Envoie un événement fabriqué par un script, comme s'il venait du clavier ou de la souris.
+	void push_input(const Ref<InputEvent> &p_event);
 	void set_input_as_handled() { input_handled = true; }
 	// Dessine l'arbre dans la cible courante. p_override_xform : vue de l'éditeur.
 	void draw(const Transform2D *p_override_xform = nullptr);
@@ -119,6 +124,8 @@ public:
 	Error change_scene_to_file(const String &p_path);
 	Error reload_current_scene();
 	Ref<SceneTreeTimer> create_timer(double p_seconds);
+	Ref<Tween> create_tween();
+	int get_tween_count() const { return (int)tweens.size(); }
 
 	// --- Groupes ---
 	Array get_nodes_in_group(const String &p_group) const;

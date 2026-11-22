@@ -1,0 +1,18 @@
+; Essais automatiques du moteur : lancer avec  mex-jeu --path tests/essais --quit-after 600
+; Chaque essai affiche « OK » ou « ECHEC » ; la dernière ligne donne le bilan.
+
+[application]
+name = "Essais MEX"
+main_scene = "res://essais.scn"
+
+[display]
+width = 640
+height = 360
+
+[rendering]
+clear_color = Color(0.2, 0.3, 0.5, 1)
+
+[locale]
+translations = ["res://textes.csv"]
+locale = "fr"
+fallback = "en"

@@ -44,6 +44,15 @@ void CanvasItem::_notification(int p_what) {
 	}
 }
 
+void CanvasItem::set_material(const Ref<CanvasItemMaterial> &p_material) {
+	material = p_material;
+	RenderingServer::get_singleton()->canvas_item_set_material(canvas_item, material.is_valid() ? material->get_rid() : RID());
+}
+
+void CanvasItem::set_clip_rect(bool p_enabled, const Rect2 &p_rect) {
+	RenderingServer::get_singleton()->canvas_item_set_clip(canvas_item, p_enabled, p_rect);
+}
+
 void CanvasItem::_update_canvas_transform() {
 	RenderingServer::get_singleton()->canvas_item_set_transform(canvas_item, get_transform());
 }
@@ -282,6 +291,9 @@ void CanvasItem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_z_index"), &CanvasItem::get_z_index);
 	ClassDB::bind_method(D_METHOD("set_z_as_relative", "relative"), &CanvasItem::set_z_as_relative);
 	ClassDB::bind_method(D_METHOD("is_z_relative"), &CanvasItem::is_z_relative);
+	ClassDB::bind_method(D_METHOD("set_material", "material"), &CanvasItem::set_material);
+	ClassDB::bind_method(D_METHOD("get_material"), &CanvasItem::get_material);
+	ClassDB::bind_method(D_METHOD("set_clip_rect", "enabled", "rect"), &CanvasItem::set_clip_rect, DEFVAL(Rect2()));
 	ClassDB::bind_method(D_METHOD("get_global_mouse_position"), &CanvasItem::get_global_mouse_position);
 	ClassDB::bind_method(D_METHOD("get_local_mouse_position"), &CanvasItem::get_local_mouse_position);
 	ClassDB::bind_method(D_METHOD("get_viewport_size"), &CanvasItem::get_viewport_size);
@@ -304,6 +316,8 @@ void CanvasItem::_bind_methods() {
 	ADD_GROUP("Ordering");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "z_index", PROPERTY_HINT_RANGE, "-4096,4096,1"), "set_z_index", "get_z_index");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "z_as_relative"), "set_z_as_relative", "is_z_relative");
+	ADD_GROUP("Material");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "material", PROPERTY_HINT_RESOURCE_TYPE, "CanvasItemMaterial"), "set_material", "get_material");
 
 	ADD_SIGNAL(MethodInfo("visibility_changed"));
 	BIND_CONSTANT(NOTIFICATION_DRAW);

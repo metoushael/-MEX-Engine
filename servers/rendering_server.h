@@ -32,6 +32,13 @@ public:
 		TEXTURE_FILTER_LINEAR,
 	};
 
+	enum BlendMode {
+		BLEND_MODE_MIX,
+		BLEND_MODE_ADD,
+		BLEND_MODE_SUB,
+		BLEND_MODE_MUL,
+	};
+
 private:
 	struct Texture {
 		SDL_Texture *tex = nullptr;
@@ -57,6 +64,43 @@ private:
 		bool z_relative = true;
 		int draw_index = 0;
 		std::vector<Command> commands;
+		bool clip = false; // découpe l'item et ses enfants à clip_rect (coordonnées locales)
+		Rect2 clip_rect;
+		RID material;
+		// Racine de canevas : teinte ambiante de l'éclairage 2D.
+		bool lit = false;
+		Color ambient = Color(1, 1, 1, 1);
+	};
+
+	// Matériau de canevas : mode de mélange et shader facultatif (rendering_server_fx.cpp).
+	struct CanvasMaterial {
+		BlendMode blend_mode = BLEND_MODE_MIX;
+		String code;
+		bool dirty = true;
+		unsigned int program = 0;
+		String error;
+		std::map<String, Variant> params;
+		std::map<String, RID> texture_params;
+		std::map<String, int> uniform_types;
+	};
+
+	struct CanvasLight {
+		RID canvas;
+		bool enabled = true;
+		Vector2 position;
+		RID texture; // vide : dégradé radial intégré
+		real_t scale = 1.0f;
+		Color color = Color(1, 1, 1, 1);
+		real_t energy = 1.0f;
+		bool shadow_enabled = false;
+	};
+
+	struct CanvasOccluder {
+		RID canvas;
+		bool enabled = true;
+		bool closed = true;
+		Transform2D xform;
+		std::vector<Vector2> polygon;
 	};
 
 	struct DrawEntry {
@@ -64,6 +108,8 @@ private:
 		Transform2D xform;
 		Color modulate;
 		int z;
+		bool clip = false;
+		Rect2 clip_rect; // en coordonnées d'écran
 	};
 
 	static RenderingServer *singleton;
@@ -79,7 +125,22 @@ private:
 
 	Item *_get_item(RID p_rid) const;
 	Command &_get_command(Item *p_item, RID p_texture);
-	void _collect(Item *p_item, const Transform2D &p_xform, const Color &p_modulate, int p_z);
+	void _collect(Item *p_item, const Transform2D &p_xform, const Color &p_modulate, int p_z, const Rect2 *p_clip);
+
+	std::unordered_map<uint64_t, CanvasMaterial> materials;
+	std::unordered_map<uint64_t, CanvasLight> lights;
+	std::unordered_map<uint64_t, CanvasOccluder> occluders;
+	RID light_texture; // dégradé radial par défaut
+	SDL_Texture *lightmap = nullptr, *light_scratch = nullptr;
+	int lightmap_w = 0, lightmap_h = 0;
+	bool shader_warning_shown = false;
+
+	void _free_fx();
+	bool _shaders_available() const;
+	bool _material_prepare(CanvasMaterial &p_material);
+	bool _draw_command_shader(const DrawEntry &p_entry, const Command &p_command, CanvasMaterial &p_material);
+	void _draw_lighting(Item *p_canvas, const Transform2D &p_xform);
+	void _apply_blend_mode(SDL_Texture *p_texture, BlendMode p_mode);
 	void _unparent(Item *p_item);
 
 protected:
@@ -111,6 +172,40 @@ public:
 	void canvas_item_set_z_index(RID p_item, int p_z);
 	void canvas_item_set_z_as_relative(RID p_item, bool p_relative);
 	void canvas_item_set_draw_index(RID p_item, int p_index);
+
+	// Découpe : rien n'est dessiné hors de p_rect (repère de l'item), enfants compris.
+	void canvas_item_set_clip(RID p_item, bool p_enabled, const Rect2 &p_rect = Rect2());
+	void canvas_item_set_material(RID p_item, RID p_material);
+
+	// --- Matériaux de canevas : mélange et shaders ---
+	RID canvas_material_create();
+	void canvas_material_set_blend_mode(RID p_material, BlendMode p_mode);
+	void canvas_material_set_shader_code(RID p_material, const String &p_code);
+	void canvas_material_set_param(RID p_material, const String &p_name, const Variant &p_value);
+	void canvas_material_set_texture_param(RID p_material, const String &p_name, RID p_texture);
+	void canvas_material_clear_params(RID p_material);
+	// Compile le shader si nécessaire ; retourne le message d'erreur ("" si tout va bien).
+	String canvas_material_get_shader_error(RID p_material);
+	bool canvas_shaders_available() const { return _shaders_available(); }
+
+	// --- Éclairage 2D ---
+	// Une teinte ambiante sombre et des lumières : le canevas est multiplié par la carte de
+	// lumière. Les occulteurs projettent des ombres pour les lumières qui les demandent.
+	void canvas_set_ambient(RID p_canvas, bool p_enabled, const Color &p_color = Color(1, 1, 1, 1));
+	RID canvas_light_create();
+	void canvas_light_set_canvas(RID p_light, RID p_canvas);
+	void canvas_light_set_enabled(RID p_light, bool p_enabled);
+	void canvas_light_set_position(RID p_light, const Vector2 &p_position);
+	void canvas_light_set_texture(RID p_light, RID p_texture);
+	void canvas_light_set_scale(RID p_light, real_t p_scale);
+	void canvas_light_set_color(RID p_light, const Color &p_color);
+	void canvas_light_set_energy(RID p_light, real_t p_energy);
+	void canvas_light_set_shadow_enabled(RID p_light, bool p_enabled);
+	RID canvas_occluder_create();
+	void canvas_occluder_set_canvas(RID p_occluder, RID p_canvas);
+	void canvas_occluder_set_enabled(RID p_occluder, bool p_enabled);
+	void canvas_occluder_set_transform(RID p_occluder, const Transform2D &p_xform);
+	void canvas_occluder_set_polygon(RID p_occluder, const std::vector<Vector2> &p_points, bool p_closed);
 
 	void canvas_item_clear(RID p_item);
 	void canvas_item_add_line(RID p_item, const Vector2 &p_from, const Vector2 &p_to, const Color &p_color, real_t p_width = 1.0f);

@@ -1,7 +1,9 @@
 // Fonctions et constantes globales de MexScript.
 #include "mexscript.h"
 
+#include "core/debug_monitor.h"
 #include "core/input/keyboard.h"
+#include "core/string/translation.h"
 #include "core/string/ustring.h"
 
 namespace {
@@ -63,6 +65,25 @@ BUILTIN(to_float) {
 BUILTIN(to_bool) {
 	CHECK_ARGS(1, 1);
 	return Variant(ARG(0).booleanize());
+}
+BUILTIN(tr) {
+	CHECK_ARGS(1, 1);
+	return Variant(TTR_GAME(ARG(0).as_string()));
+}
+BUILTIN(get_stack) {
+	CHECK_ARGS(0, 0);
+	return Variant(Performance::get_singleton() ? Performance::get_singleton()->get_script_stack() : Array());
+}
+BUILTIN(print_stack) {
+	CHECK_ARGS(0, 0);
+	std::vector<Performance::ScriptStackEntry> stack;
+	if (Performance::script_get_stack) {
+		Performance::script_get_stack(&stack);
+	}
+	for (size_t i = 0; i < stack.size(); i++) {
+		print_line(vformat("  [%d] %s (%s:%d)", (int)i, stack[i].function.c_str(), stack[i].source.c_str(), stack[i].line));
+	}
+	return Variant();
 }
 BUILTIN(len) {
 	CHECK_ARGS(1, 1);
@@ -485,7 +506,7 @@ const std::unordered_map<String, MXBuiltinFunction> &_builtins() {
 		REG(print), REG(prints), REG(printerr), { "push_error", &fn_printerr }, REG(push_warning), REG(str),
 		{ "int", &fn_to_int }, { "float", &fn_to_float }, { "bool", &fn_to_bool }, { "String", &fn_str },
 		REG(len), REG(range), { "typeof", &fn_typeof_ }, REG(type_string), REG(is_instance_valid),
-		REG(load), { "preload", &fn_load },
+		REG(load), { "preload", &fn_load }, REG(tr), REG(get_stack), REG(print_stack),
 		REG(Vector2), REG(Vector3), REG(Rect2), REG(Color), REG(Array), REG(Dictionary),
 		REG(sqrt), REG(sin), REG(cos), REG(tan), REG(asin), REG(acos), REG(atan), REG(atan2), REG(exp), REG(log), REG(pow),
 		REG(deg_to_rad), REG(rad_to_deg), REG(fmod), REG(fposmod),
@@ -524,6 +545,8 @@ bool mexscript_find_global_constant(const String &p_name, Variant &r_value) {
 		constants["TAU"] = Variant(Math_TAU);
 		constants["INF"] = Variant((double)INFINITY);
 		constants["NAN"] = Variant((double)NAN);
+		constants["OK"] = Variant((int64_t)OK);
+		constants["FAILED"] = Variant((int64_t)FAILED);
 		constants["MOUSE_BUTTON_LEFT"] = Variant((int64_t)MOUSE_BUTTON_LEFT);
 		constants["MOUSE_BUTTON_RIGHT"] = Variant((int64_t)MOUSE_BUTTON_RIGHT);
 		constants["MOUSE_BUTTON_MIDDLE"] = Variant((int64_t)MOUSE_BUTTON_MIDDLE);

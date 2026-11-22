@@ -19,6 +19,11 @@ class AnimationPlayer : public Node {
 	String current;
 	double position = 0;
 	bool playing = false;
+	// Fondu : au lancement, les valeurs en cours sont retenues puis mélangées à la nouvelle animation.
+	double blend_time = 0;
+	double blend_elapsed = 0;
+	Dictionary blend_from; // piste -> valeur au moment du lancement
+	std::vector<String> queued;
 
 	static Variant _deep_copy(const Variant &p_value);
 	Dictionary _get_animation(const String &p_name) const;
@@ -54,7 +59,14 @@ public:
 	Variant track_get_key_value(const String &p_name, const String &p_track, int p_index) const;
 
 	// Lecture.
-	void play(const String &p_name = "");
+	void play(const String &p_name = "", double p_blend = 0.0);
+	// Lance l'animation quand celle en cours se termine.
+	void queue(const String &p_name);
+	void clear_queue() { queued.clear(); }
+	// Courbe d'accélération entre les clés d'une piste (types et sens de Tween).
+	void set_track_easing(const String &p_name, const String &p_track, int p_trans, int p_ease);
+	int get_track_transition(const String &p_name, const String &p_track) const;
+	int get_track_ease(const String &p_name, const String &p_track) const;
 	void stop();
 	void pause() { playing = false; }
 	bool is_playing() const { return playing; }

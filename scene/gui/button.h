@@ -6,6 +6,7 @@
 class Button : public Control {
 	GDCLASS(Button, Control)
 
+protected:
 	String text = "Button";
 	Ref<Font> font;
 	int font_size = 16;
@@ -17,10 +18,15 @@ class Button : public Control {
 	Color color_pressed = Color(0.16f, 0.42f, 0.72f);
 	Color font_color = Color(0.93f, 0.94f, 0.96f);
 
+protected:
 	bool hovered = false;
 	bool pressing = false;
+	virtual void _activate(); // clic ou touche Entrée
+	// Dessin propre à une classe dérivée (case à cocher, bouton à image) ; faux : dessin normal.
+	virtual bool _draw_custom() { return false; }
+	virtual void _draw_extra() {} // ajout par-dessus le dessin normal
+	virtual bool _can_focus() const override { return !disabled; }
 
-protected:
 	void _notification(int p_what);
 	static void _bind_methods();
 	virtual void input(const Ref<InputEvent> &p_event) override;

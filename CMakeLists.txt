@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 # Le nom du projet est en minuscules exprès : project(MEX) créerait une variable MEX_VERSION
 # qui masquerait l'option du même nom ci-dessous dès la deuxième configuration.
-project(mex VERSION 0.5.1 LANGUAGES C CXX)
+project(mex VERSION 0.6.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -70,6 +70,9 @@ target_include_directories(mex_engine PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}/thirdparty
 )
 target_link_libraries(mex_engine PUBLIC ${MEX_SDL2_LIBS})
+if(WIN32)
+	target_link_libraries(mex_engine PUBLIC ws2_32) # sockets (core/io/net_socket.cpp)
+endif()
 target_compile_definitions(mex_engine PUBLIC SDL_MAIN_HANDLED MEX_VERSION="${MEX_VERSION}")
 
 if(MSVC)
