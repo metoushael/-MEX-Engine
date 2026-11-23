@@ -13,8 +13,8 @@ clear_color = Color(0.45, 0.72, 0.93, 1)
 texture_filter = "nearest"
 
 [input]
-gauche = ["Left", "A"]
-droite = ["Right", "D"]
-sauter = ["Space", "Up", "W"]
-recommencer = ["R"]
-menu = ["Escape"]
+gauche = ["Left", "A", "JoyDpadLeft", "JoyLeftX-"]
+droite = ["Right", "D", "JoyDpadRight", "JoyLeftX+"]
+sauter = ["Space", "Up", "W", "JoyA"]
+recommencer = ["R", "JoyStart"]
+menu = ["Escape", "JoyBack"]

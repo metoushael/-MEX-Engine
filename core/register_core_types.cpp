@@ -30,6 +30,8 @@ void register_core_types() {
 	GDREGISTER_ABSTRACT_CLASS(InputEventMouse);
 	GDREGISTER_CLASS(InputEventMouseButton);
 	GDREGISTER_CLASS(InputEventMouseMotion);
+	GDREGISTER_CLASS(InputEventJoypadButton);
+	GDREGISTER_CLASS(InputEventJoypadMotion);
 	GDREGISTER_ABSTRACT_CLASS(Engine);
 	GDREGISTER_ABSTRACT_CLASS(OS);
 	GDREGISTER_ABSTRACT_CLASS(ProjectSettings);

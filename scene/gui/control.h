@@ -169,6 +169,11 @@ public:
 	Control *find_focus_neighbor(const Vector2 &p_direction) const;
 	// Navigation au clavier, appelée par l'arbre pour les événements que personne n'a traités.
 	static bool handle_focus_navigation(SceneTree *p_tree, const Ref<InputEvent> &p_event);
+	// Manette : la croix et le stick gauche valent les flèches, A vaut Entrée, B vaut Échap.
+	// begin_input_event est appelé par l'arbre une fois par événement ; get_ui_keycode donne la
+	// touche pressée, ou son équivalent pour un événement de manette (0 sinon).
+	static void begin_input_event(const Ref<InputEvent> &p_event);
+	static int get_ui_keycode(const Ref<InputEvent> &p_event);
 
 	// --- Découpe ---
 	// Rien de ce contrôle ni de ses enfants n'est dessiné hors de son rectangle.

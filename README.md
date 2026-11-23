@@ -101,7 +101,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.8.0). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.9.0). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -442,6 +442,9 @@ Les boutons, champs de saisie, curseurs et listes le prennent au clic.
 | Entrée, Espace | Active le bouton qui a le focus |
 | Échap | Retire le focus |
 
+À la manette : croix ou stick gauche pour les flèches, A pour Entrée, B pour Échap (voir
+[Manettes](#manettes)).
+
 En script : `grab_focus()`, `release_focus()`, `has_focus()`, signaux `focus_entered` et
 `focus_exited`, propriété `focus_mode` (`FOCUS_NONE`, `FOCUS_CLICK`, `FOCUS_ALL`). Pour un menu
 utilisable sans souris, appelez `grab_focus()` sur le premier bouton dans `_ready()`. Un
@@ -473,6 +476,126 @@ Noms utilisés : `font_color`, `font_size`, `font` (tous les textes) ; `color_no
 `color_hover`, `color_pressed` (boutons) ; `bg_color`, `border_color` (panneaux, champs,
 listes) ; `fill_color`, `grabber_color` (curseurs) ; `focus_color` (liseré du focus).
 Une police réglée sur le contrôle lui-même l'emporte sur celle du thème.
+
+## Manettes
+
+MEX lit les manettes avec `SDL_GameController` : Xbox, PlayStation, Switch Pro et la plupart
+des manettes USB ou Bluetooth reçoivent la **même disposition** (celle d'une manette Xbox), et
+les boutons et axes portent les mêmes numéros que dans Godot. Brancher ou débrancher une
+manette pendant le jeu fonctionne.
+
+### Assigner la manette à une action
+
+*Projet > Paramètres du projet > Contrôles* : le bouton **+ Manette** d'une action propose les
+boutons, puis les sticks (un sens à la fois) et les gâchettes. Une action peut mêler clavier,
+souris et manette ; le script ne change pas :
+
+```gdscript
+func _physics_process(delta):
+	# Clavier : -1, 0 ou 1. Stick : toutes les valeurs entre les deux.
+	var saisie = Input.get_vector("gauche", "droite", "avancer", "reculer")
+	velocity.x = saisie.x * vitesse
+	if Input.is_action_just_pressed("sauter"):
+		velocity.y = -force_saut
+```
+
+Dans `project.mex`, les entrées de manette s'écrivent comme les touches :
+
+```ini
+[input]
+sauter = ["Space", "JoyA"]
+droite = ["Right", "JoyDpadRight", "JoyLeftX+"]
+
+[input_deadzones]
+droite = 0.3
+```
+
+| Nom | Entrée |
+| --- | --- |
+| `JoyA`, `JoyB`, `JoyX`, `JoyY` | Boutons de façade (croix, rond, carré, triangle sur PlayStation) |
+| `JoyBack`, `JoyGuide`, `JoyStart` | Select, bouton central, Start |
+| `JoyLeftShoulder`, `JoyRightShoulder` | Gâchettes hautes (LB, RB) |
+| `JoyLeftStick`, `JoyRightStick` | Clic sur un stick |
+| `JoyDpadUp`, `JoyDpadDown`, `JoyDpadLeft`, `JoyDpadRight` | Croix directionnelle |
+| `JoyLeftX-`, `JoyLeftX+`, `JoyLeftY-`, `JoyLeftY+` | Stick gauche : gauche, droite, haut, bas |
+| `JoyRightX-`, `JoyRightX+`, `JoyRightY-`, `JoyRightY+` | Stick droit |
+| `JoyTriggerLeft`, `JoyTriggerRight` | Gâchettes analogiques (LT, RT) |
+
+### Zone morte
+
+Un stick au repos ne renvoie jamais exactement 0. Chaque action a une **zone morte** : en
+dessous, le stick est ignoré ; au-dessus, la course restante est ramenée sur 0 à 1. Elle vaut
+0,5 pour les actions `ui_*` (comme dans Godot) et 0,2 pour les vôtres (Godot 4.3 met 0,5
+partout). Elle se règle avec le curseur *Zone morte* de l'action, ou par script avec
+`InputMap.action_set_deadzone("droite", 0.3)`. `Input.get_vector` applique, comme dans Godot,
+une zone morte **circulaire** et limite la longueur à 1 : la diagonale ne va pas plus vite.
+
+### En script
+
+| `Input` | Rôle |
+| --- | --- |
+| `get_action_strength(action)` | Force de 0 à 1, zone morte retirée (1 pour une touche) |
+| `get_action_raw_strength(action)` | Valeur brute de l'axe, sans zone morte |
+| `get_axis(negative, positive)`, `get_vector(gauche, droite, haut, bas, zone_morte = -1)` | Un axe ou une direction, analogiques |
+| `get_connected_joypads()` | Numéros des manettes branchées, par exemple `[0, 1]` |
+| `get_joy_name(numero)`, `get_joy_guid(numero)` | Nom et identifiant SDL de la manette |
+| `is_joy_button_pressed(numero, JOY_BUTTON_A)` | État d'un bouton d'une manette précise |
+| `get_joy_axis(numero, JOY_AXIS_LEFT_X)` | Valeur d'un axe : -1 à 1 (sticks), 0 à 1 (gâchettes) |
+| `start_joy_vibration(numero, faible, fort, duree)`, `stop_joy_vibration(numero)` | Vibration, moteurs de 0 à 1, durée en secondes |
+| signal `joy_connection_changed(numero, branchee)` | Manette branchée ou débranchée |
+
+`InputMap` : `action_add_joy_button(action, bouton)`, `action_add_joy_axis(action, axe, sens)`
+(sens -1 ou 1), `action_set_deadzone`, `action_get_deadzone`.
+
+Constantes : `JOY_BUTTON_A`, `_B`, `_X`, `_Y`, `_BACK`, `_GUIDE`, `_START`, `_LEFT_STICK`,
+`_RIGHT_STICK`, `_LEFT_SHOULDER`, `_RIGHT_SHOULDER`, `_DPAD_UP`, `_DPAD_DOWN`, `_DPAD_LEFT`,
+`_DPAD_RIGHT` ; `JOY_AXIS_LEFT_X`, `_LEFT_Y`, `_RIGHT_X`, `_RIGHT_Y`, `_TRIGGER_LEFT`,
+`_TRIGGER_RIGHT`.
+
+Les événements arrivent aussi dans `_input` :
+
+```gdscript
+func _ready():
+	Input.joy_connection_changed.connect(_manette)
+
+func _manette(numero, branchee):
+	print(Input.get_joy_name(numero) if branchee else "Manette débranchée")
+
+func _input(event):
+	if event is InputEventJoypadButton and event.pressed:
+		print("manette ", event.device, " bouton ", event.button_index)
+	if event is InputEventJoypadMotion and event.axis == JOY_AXIS_TRIGGER_RIGHT:
+		accelerateur = event.axis_value
+```
+
+Les actions regroupent toutes les manettes : pour un jeu à plusieurs sur le même écran,
+lisez chaque manette avec `is_joy_button_pressed` et `get_joy_axis`, ou triez les événements
+par `event.device`.
+
+### Dans les menus
+
+La croix et le stick gauche déplacent le focus comme les flèches, **A** active le bouton qui
+a le focus, **B** retire le focus ; dans une liste déroulante ouverte, haut et bas changent de
+ligne et A valide. Les actions `ui_left`, `ui_right`, `ui_up`, `ui_down`, `ui_accept` et
+`ui_cancel` reçoivent ces mêmes entrées par défaut. Un projet enregistré avec une version
+plus ancienne garde ses actions `ui_*` telles qu'elles sont écrites dans `project.mex` :
+ajoutez-leur la manette dans l'onglet *Contrôles*.
+
+Les deux projets d'exemple se jouent à la manette (stick gauche, A pour sauter, Start pour
+recommencer ; dans la démo 3D, stick droit pour la caméra et X pour lancer une balle).
+
+### Ce qui manque par rapport à Godot
+
+- Pas de capture « appuyez sur un bouton de la manette » dans l'éditeur : on choisit dans une liste.
+- Les actions ne distinguent pas les manettes (pas de réglage *Device* par événement).
+- Pas de correspondances ajoutées par le jeu (`Input.add_joy_mapping`) : une manette inconnue
+  de SDL est ignorée, de même que les volants et manches à balai.
+- Pas de répétition quand la croix ou le stick restent tenus dans un menu.
+- Pas d'écran tactile, de gyroscope, de pavé tactile ni de couleur de LED de la manette.
+
+Les essais passent par une manette **virtuelle** créée par SDL (boutons, axes, branchement et
+débranchement). Aucune manette réelle n'a été essayée, et la vibration n'a pas pu être
+vérifiée : si la vôtre n'est pas reconnue, `Input.get_connected_joypads()` renvoie `[]`.
 
 ## Animation
 
@@ -980,7 +1103,7 @@ français.
   ombres 2D ont un bord net.
 - 3D : rendu direct en OpenGL 2.1, sans réflexions du ciel, éclairage global ni
   post-traitement ; seule la lumière directionnelle projette des ombres ; pas de shaders
-  écrits par l'utilisateur ; pas de squelettes ni d'animation de maillages ; import OBJ
+  écrits par l'utilisateur ; import OBJ
   (sans lecture des fichiers `.mtl`) et glTF sans textures ni matériaux séparés ;
   squelettes sans mélange d'animations ni cinématique inverse, peau calculée sur le
   processeur.
@@ -994,7 +1117,8 @@ français.
   (`RichTextLabel`), d'arbre (`Tree`) ni de fenêtres de dialogue ; un thème règle les couleurs,
   tailles et polices mais pas des boîtes de style dessinées (`StyleBox`) ; pas d'éditeur de
   thème ; `tooltip_text` est enregistré mais aucune infobulle ne s'affiche ; `ScrollContainer`
-  n'a qu'une barre verticale ; pas de manette pour la navigation.
+  n'a qu'une barre verticale.
+- Manettes : voir « Ce qui manque par rapport à Godot » dans la section [Manettes](#manettes).
 - Animation : pas de pistes d'appel de méthode, pas d'`AnimationTree` (mélange de plusieurs
   animations par graphe), pas de courbes de Bézier ; la courbe d'une piste se règle par script.
 - Traductions : fichiers CSV seulement (pas de `.po`), pas de pluriels ni de textes de droite à gauche.
@@ -1037,7 +1161,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.8.0"
+git commit -m "MEX 0.9.0"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -1047,7 +1171,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Archives `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.8.0**. Archives `mex-v0.8.0-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.9.0**. Archives `mex-v0.9.0-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -1057,22 +1181,22 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.8.0
-  git push origin v0.8.0
+  git tag v0.9.0
+  git push origin v0.9.0
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.8.0` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.9.0` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.8.0-windows-x86_64.zip`
-- `mex-v0.8.0-linux-x86_64.tar.gz`
-- `mex-v0.8.0-macos-universal.tar.gz`
+- `mex-v0.9.0-windows-x86_64.zip`
+- `mex-v0.9.0-linux-x86_64.tar.gz`
+- `mex-v0.9.0-macos-universal.tar.gz`
 - `SHA256SUMS.txt`, les empreintes des archives.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.8.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.9.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 archives sont tout de même publiées et la note de version le signale.
 
 **Si rien n'apparaît dans Releases :**
@@ -1111,7 +1235,10 @@ SDL_AUDIODRIVER=dummy xvfb-run -a mex-jeu --path tests/essais --quit-after 60
 ```
 
 Chaque vérification affiche `OK` ou `ECHEC`, la dernière ligne donne le bilan
-(`BILAN  104 réussis, 0 échecs`). La ligne d'erreur « Shader 2D ... 'inconnu' undeclared » est
+(`BILAN  122 réussis, 0 échecs`). Avec `MEX_VIRTUAL_JOYPAD=1`, SDL crée une manette
+virtuelle et un essai de plus vérifie le trajet complet, de SDL jusqu'au script (bilan : 123) ;
+`Input.virtual_joy_button(bouton, appuye)`, `Input.virtual_joy_axis(axe, valeur)` et
+`Input.virtual_joy_disconnect()` la pilotent. La ligne d'erreur « Shader 2D ... 'inconnu' undeclared » est
 attendue : un essai vérifie qu'un shader faux est bien signalé.
 
 ![Scène des essais : interface, shader, particules, lumière et ombre](docs/essais.png)
@@ -1208,4 +1335,4 @@ Depuis les sources, ces deux fichiers sont `branding/app/mex-icone-256.png` et
 | [dr_mp3](https://github.com/mackron/dr_libs) (David Reid) | Domaine public ou MIT-0, voir `thirdparty/dr_libs/LICENSE` |
 | Police Roboto Medium (Christian Robertson) | Apache 2.0, voir `thirdparty/fonts/LICENSE.txt` |
 | Icônes [Lucide](https://lucide.dev) 0.469, celles de l'éditeur | ISC, voir `thirdparty/lucide/LICENSE.txt` |
-| [Godot Engine](https://godotengine.org) 4.3 : code adapté pour l'archive incorporée à l'exécutable, la disposition de `export_presets.cfg`, le son 3D (`AudioStreamPlayer3D`), les quaternions, le squelette (`Skeleton3D`) et des fonctions mathématiques de MexScript (`ease`, `rotate_toward`, `cubic_interpolate`, etc.) | MIT, voir `thirdparty/godot/LICENSE.txt` |
+| [Godot Engine](https://godotengine.org) 4.3 : code adapté pour l'archive incorporée à l'exécutable, la disposition de `export_presets.cfg`, le son 3D (`AudioStreamPlayer3D`), les quaternions, le squelette (`Skeleton3D`), les manettes (numérotation des boutons et des axes, zones mortes, `Input.get_vector`) et des fonctions mathématiques de MexScript (`ease`, `rotate_toward`, `cubic_interpolate`, etc.) | MIT, voir `thirdparty/godot/LICENSE.txt` |

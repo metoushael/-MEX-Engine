@@ -10,6 +10,7 @@ class InputMap : public Object {
 
 	static InputMap *singleton;
 	std::map<String, std::vector<int>> actions;
+	std::map<String, float> deadzones;
 
 protected:
 	static void _bind_methods();
@@ -22,6 +23,13 @@ public:
 	bool has_action(const String &p_action) const { return actions.count(p_action) > 0; }
 	void action_add_code(const String &p_action, int p_code);
 	void action_erase_codes(const String &p_action);
+	// Manette : bouton, ou axe avec son sens (-1 ou 1).
+	void action_add_joy_button(const String &p_action, int p_button);
+	void action_add_joy_axis(const String &p_action, int p_axis, float p_sign);
+	// Zone morte : en dessous, un axe ne déclenche pas l'action (0,5 pour les actions ui_*, 0,2 sinon).
+	void action_set_deadzone(const String &p_action, float p_deadzone);
+	float action_get_deadzone(const String &p_action) const;
+	bool action_has_deadzone(const String &p_action) const { return deadzones.count(p_action) > 0; }
 	const std::vector<int> *get_action_codes(const String &p_action) const;
 	Array get_actions() const;
 	bool event_is_action(const InputEvent *p_event, const String &p_action) const;
@@ -41,13 +49,24 @@ class Input : public Object {
 
 	struct ActionState {
 		bool pressed = false;
+		float strength = 0.0f; // 0 à 1, zone morte retirée
+		float raw_strength = 0.0f; // valeur brute de l'axe
 		uint64_t pressed_process_frame = UINT64_MAX;
 		uint64_t pressed_physics_frame = UINT64_MAX;
 		uint64_t released_process_frame = UINT64_MAX;
 		uint64_t released_physics_frame = UINT64_MAX;
 	};
 
-	std::set<int> codes_pressed; // touches + boutons de souris (avec drapeau)
+	std::set<int> codes_pressed; // touches + boutons de souris et de manette (avec drapeau)
+	struct Joypad {
+		String name;
+		String guid;
+		std::set<int> buttons;
+		float axes[JOY_AXIS_MAX] = { 0, 0, 0, 0, 0, 0 };
+	};
+	std::map<int, Joypad> joypads;
+	std::function<void(int, float, float, float)> joy_vibration_handler;
+	std::function<void(int, int, float)> virtual_joy_handler;
 	std::map<String, ActionState> action_states;
 	Vector2 mouse_position;
 	int mouse_mode = 0;
@@ -82,8 +101,27 @@ public:
 	bool is_action_just_pressed(const String &p_action) const;
 	bool is_action_just_released(const String &p_action) const;
 	float get_action_strength(const String &p_action) const;
+	float get_action_raw_strength(const String &p_action) const;
 	float get_axis(const String &p_negative, const String &p_positive) const;
-	Vector2 get_vector(const String &p_neg_x, const String &p_pos_x, const String &p_neg_y, const String &p_pos_y) const;
+	// p_deadzone < 0 : moyenne des zones mortes des quatre actions.
+	Vector2 get_vector(const String &p_neg_x, const String &p_pos_x, const String &p_neg_y, const String &p_pos_y, float p_deadzone = -1.0f) const;
+
+	// Manettes
+	void joy_connection_changed(int p_device, bool p_connected, const String &p_name = String(), const String &p_guid = String());
+	Array get_connected_joypads() const;
+	String get_joy_name(int p_device) const;
+	String get_joy_guid(int p_device) const;
+	bool is_joy_button_pressed(int p_device, int p_button) const;
+	float get_joy_axis(int p_device, int p_axis) const;
+	// Vibration : moteurs faible et fort de 0 à 1, durée en secondes (0 : jusqu'à stop_joy_vibration).
+	void start_joy_vibration(int p_device, float p_weak, float p_strong, float p_duration = 0.0f);
+	void stop_joy_vibration(int p_device);
+	void set_joy_vibration_handler(std::function<void(int, float, float, float)> p_handler) { joy_vibration_handler = p_handler; }
+	// Manette virtuelle des essais (variable d'environnement MEX_VIRTUAL_JOYPAD=1).
+	void virtual_joy_button(int p_button, bool p_pressed);
+	void virtual_joy_axis(int p_axis, float p_value);
+	void virtual_joy_disconnect(); // comme si on la débranchait
+	void set_virtual_joy_handler(std::function<void(int, int, float)> p_handler) { virtual_joy_handler = p_handler; }
 	Vector2 get_mouse_position() const { return mouse_position; }
 	void set_mouse_position(const Vector2 &p_pos) { mouse_position = p_pos; }
 

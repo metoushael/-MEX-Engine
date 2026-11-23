@@ -1,5 +1,6 @@
 #include "button.h"
 
+#include "core/input/input_event.h"
 #include "core/input/keyboard.h"
 #include "scene/main/scene_tree.h"
 
@@ -73,6 +74,14 @@ void Button::input(const Ref<InputEvent> &p_event) {
 	if (InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr())) {
 		// Entrée ou Espace : comme un clic, pour le bouton qui a le focus.
 		if (has_focus() && key->is_pressed() && !key->is_echo() && (key->get_keycode() == KEY_ENTER || key->get_keycode() == KEY_SPACE)) {
+			get_tree()->set_input_as_handled();
+			_activate();
+		}
+		return;
+	}
+	if (Object::cast_to<InputEventJoypadButton>(p_event.ptr())) {
+		// Bouton A de la manette : comme Entrée.
+		if (has_focus() && get_ui_keycode(p_event) == KEY_ENTER) {
 			get_tree()->set_input_as_handled();
 			_activate();
 		}

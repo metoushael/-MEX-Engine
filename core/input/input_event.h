@@ -81,6 +81,52 @@ public:
 	virtual String as_text() const override;
 };
 
+// Bouton de manette (classe et propriétés de Godot).
+class InputEventJoypadButton : public InputEvent {
+	GDCLASS(InputEventJoypadButton, InputEvent)
+
+	int device = 0;
+	int button_index = 0;
+	bool pressed = false;
+	float pressure = 0.0f;
+
+protected:
+	static void _bind_methods();
+
+public:
+	void set_device(int p_device) { device = p_device; }
+	int get_device() const { return device; }
+	void set_button_index(int p_index) { button_index = p_index; }
+	int get_button_index() const { return button_index; }
+	void set_pressed(bool p_pressed) { pressed = p_pressed; }
+	void set_pressure(float p_pressure) { pressure = p_pressure; }
+	float get_pressure() const { return pressure; }
+	virtual bool is_pressed() const override { return pressed; }
+	virtual int get_input_code() const override { return input_code_joy_button(button_index); }
+	virtual String as_text() const override;
+};
+
+// Déplacement d'un axe de manette : -1 à 1 pour les sticks, 0 à 1 pour les gâchettes.
+class InputEventJoypadMotion : public InputEvent {
+	GDCLASS(InputEventJoypadMotion, InputEvent)
+
+	int device = 0;
+	int axis = 0;
+	float axis_value = 0.0f;
+
+protected:
+	static void _bind_methods();
+
+public:
+	void set_device(int p_device) { device = p_device; }
+	int get_device() const { return device; }
+	void set_axis(int p_axis) { axis = p_axis; }
+	int get_axis() const { return axis; }
+	void set_axis_value(float p_value) { axis_value = p_value; }
+	float get_axis_value() const { return axis_value; }
+	virtual String as_text() const override;
+};
+
 class InputEventMouseMotion : public InputEventMouse {
 	GDCLASS(InputEventMouseMotion, InputEventMouse)
 

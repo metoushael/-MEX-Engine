@@ -19,6 +19,8 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include <algorithm>
+#include <cstring>
+#include <map>
 
 // ---------------------------------------------------------------------------
 // Éditeur de script
@@ -283,6 +285,9 @@ void EditorNode::_save_input_map() {
 		if (str_begins_with(entry.first, "input/") && !InputMap::get_singleton()->has_action(entry.first.substr(6))) {
 			stale.push_back(entry.first);
 		}
+		if (str_begins_with(entry.first, "input_deadzones/")) {
+			stale.push_back(entry.first); // réécrites plus bas pour les actions qui en ont une
+		}
 	}
 	for (const String &key : stale) {
 		ps->erase_setting(key);
@@ -293,10 +298,47 @@ void EditorNode::_save_input_map() {
 			codes.push_back(Variant(input_code_get_name(code)));
 		}
 		ps->set_setting("input/" + entry.first, Variant(codes));
+		if (InputMap::get_singleton()->action_has_deadzone(entry.first)) {
+			ps->set_setting("input_deadzones/" + entry.first, Variant((double)InputMap::get_singleton()->action_get_deadzone(entry.first)));
+		}
 	}
 	if (ps->save() != OK) {
 		print_error("Impossible d'enregistrer les paramètres du projet.");
 	}
+}
+
+// Nom affiché d'une entrée de manette ("JoyLeftX+" reste le nom écrit dans project.mex).
+static String _joy_code_label(int p_code) {
+	static const std::map<String, const char *> labels = {
+		{ "JoyA", "Manette : A (croix sur PlayStation)" },
+		{ "JoyB", "Manette : B (rond)" },
+		{ "JoyX", "Manette : X (carré)" },
+		{ "JoyY", "Manette : Y (triangle)" },
+		{ "JoyBack", "Manette : Back / Select" },
+		{ "JoyGuide", "Manette : bouton central" },
+		{ "JoyStart", "Manette : Start" },
+		{ "JoyLeftStick", "Manette : clic du stick gauche" },
+		{ "JoyRightStick", "Manette : clic du stick droit" },
+		{ "JoyLeftShoulder", "Manette : gâchette haute gauche (LB)" },
+		{ "JoyRightShoulder", "Manette : gâchette haute droite (RB)" },
+		{ "JoyDpadUp", "Manette : croix haut" },
+		{ "JoyDpadDown", "Manette : croix bas" },
+		{ "JoyDpadLeft", "Manette : croix gauche" },
+		{ "JoyDpadRight", "Manette : croix droite" },
+		{ "JoyLeftX-", "Manette : stick gauche vers la gauche" },
+		{ "JoyLeftX+", "Manette : stick gauche vers la droite" },
+		{ "JoyLeftY-", "Manette : stick gauche vers le haut" },
+		{ "JoyLeftY+", "Manette : stick gauche vers le bas" },
+		{ "JoyRightX-", "Manette : stick droit vers la gauche" },
+		{ "JoyRightX+", "Manette : stick droit vers la droite" },
+		{ "JoyRightY-", "Manette : stick droit vers le haut" },
+		{ "JoyRightY+", "Manette : stick droit vers le bas" },
+		{ "JoyTriggerLeft", "Manette : gâchette gauche (LT)" },
+		{ "JoyTriggerRight", "Manette : gâchette droite (RT)" },
+	};
+	const String name = input_code_get_name(p_code);
+	const auto it = labels.find(name);
+	return it == labels.end() ? name : String(it->second);
 }
 
 void EditorNode::_draw_project_settings() {
@@ -441,7 +483,7 @@ void EditorNode::_draw_project_settings() {
 				const String &action = entry.first;
 				ImGui::PushID(action.c_str());
 				const bool open = ImGui::TreeNodeEx("##action", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap, "%s", action.c_str());
-				ImGui::SameLine(ImGui::GetContentRegionAvail().x - 250);
+				ImGui::SameLine(ImGui::GetContentRegionAvail().x - 330);
 				if (capture_action == action) {
 					ImGui::PushStyleColor(ImGuiCol_Button, EditorUI::col(palette.accent, 0.55f));
 					if (ImGui::SmallButton("Appuyez sur une touche... (Échap)")) {
@@ -471,6 +513,25 @@ void EditorNode::_draw_project_settings() {
 						ImGui::EndPopup();
 					}
 					ImGui::SameLine();
+					if (ImGui::SmallButton("+ Manette")) {
+						ImGui::OpenPopup("##joypad");
+					}
+					if (ImGui::BeginPopup("##joypad")) {
+						std::vector<std::pair<String, int>> joy_codes;
+						input_code_get_joy_names(&joy_codes);
+						for (const auto &joy : joy_codes) {
+							if (joy.first == "JoyLeftX-") {
+								ImGui::Separator(); // boutons au-dessus, sticks et gâchettes en dessous
+							}
+							// Sans le préfixe « Manette : », déjà dit par le bouton.
+							if (ImGui::MenuItem(_joy_code_label(joy.second).substr(strlen("Manette : ")).c_str())) {
+								InputMap::get_singleton()->action_add_code(action, joy.second);
+								_save_input_map();
+							}
+						}
+						ImGui::EndPopup();
+					}
+					ImGui::SameLine();
 					if (ImGui::SmallButton("Supprimer")) {
 						InputMap::get_singleton()->erase_action(action);
 						_save_input_map();
@@ -487,8 +548,25 @@ void EditorNode::_draw_project_settings() {
 							remove_code = code;
 						}
 						ImGui::SameLine();
-						ImGui::TextUnformatted(input_code_get_name(code).c_str());
+						ImGui::TextUnformatted(_joy_code_label(code).c_str());
 						ImGui::PopID();
+					}
+					// Zone morte : seulement utile si un stick ou une gâchette est assigné.
+					bool has_axis = false;
+					for (int code : entry.second) {
+						has_axis = has_axis || input_code_is_joy_axis(code);
+					}
+					if (has_axis && InputMap::get_singleton()->has_action(action)) {
+						float deadzone = InputMap::get_singleton()->action_get_deadzone(action);
+						ImGui::SetNextItemWidth(160);
+						if (ImGui::SliderFloat("Zone morte", &deadzone, 0.0f, 1.0f, "%.2f")) {
+							InputMap::get_singleton()->action_set_deadzone(action, deadzone);
+						}
+						if (ImGui::IsItemDeactivatedAfterEdit()) {
+							_save_input_map();
+						}
+						ImGui::SameLine();
+						ImGui::TextDisabled("(en dessous, le stick est ignoré)");
 					}
 					if (remove_code != 0 && InputMap::get_singleton()->has_action(action)) {
 						InputMap::get_singleton()->action_erase_codes(action);

@@ -419,9 +419,58 @@ Control *Control::find_focus_neighbor(const Vector2 &p_direction) const {
 	return best;
 }
 
+static int ui_joy_key = 0; // équivalent clavier de l'événement de manette en cours
+static int ui_stick_direction[2] = { 0, 0 }; // stick gauche : -1, 0 ou 1 par axe
+
+void Control::begin_input_event(const Ref<InputEvent> &p_event) {
+	ui_joy_key = 0;
+	if (const InputEventJoypadButton *button = Object::cast_to<InputEventJoypadButton>(p_event.ptr())) {
+		if (!button->is_pressed()) {
+			return;
+		}
+		switch (button->get_button_index()) {
+			case JOY_BUTTON_DPAD_UP: ui_joy_key = KEY_UP; break;
+			case JOY_BUTTON_DPAD_DOWN: ui_joy_key = KEY_DOWN; break;
+			case JOY_BUTTON_DPAD_LEFT: ui_joy_key = KEY_LEFT; break;
+			case JOY_BUTTON_DPAD_RIGHT: ui_joy_key = KEY_RIGHT; break;
+			case JOY_BUTTON_A: ui_joy_key = KEY_ENTER; break;
+			case JOY_BUTTON_B: ui_joy_key = KEY_ESCAPE; break;
+			default: break;
+		}
+	} else if (const InputEventJoypadMotion *motion = Object::cast_to<InputEventJoypadMotion>(p_event.ptr())) {
+		const int axis = motion->get_axis();
+		if (axis != JOY_AXIS_LEFT_X && axis != JOY_AXIS_LEFT_Y) {
+			return;
+		}
+		// Un seul pas par poussée du stick : il part à 0,5 et ne se réarme qu'en revenant sous 0,3.
+		const float value = motion->get_axis_value();
+		int &last = ui_stick_direction[axis];
+		int direction = value > 0.5f ? 1 : (value < -0.5f ? -1 : 0);
+		if (direction == 0 && last != 0 && value * last > 0.3f) {
+			direction = last;
+		}
+		if (direction != last) {
+			last = direction;
+			if (direction != 0) {
+				ui_joy_key = axis == JOY_AXIS_LEFT_X ? (direction > 0 ? KEY_RIGHT : KEY_LEFT) : (direction > 0 ? KEY_DOWN : KEY_UP);
+			}
+		}
+	}
+}
+
+int Control::get_ui_keycode(const Ref<InputEvent> &p_event) {
+	if (const InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr())) {
+		return key->is_pressed() ? key->get_keycode() : 0;
+	}
+	if (Object::cast_to<InputEventJoypadButton>(p_event.ptr()) || Object::cast_to<InputEventJoypadMotion>(p_event.ptr())) {
+		return ui_joy_key;
+	}
+	return 0;
+}
+
 bool Control::handle_focus_navigation(SceneTree *p_tree, const Ref<InputEvent> &p_event) {
-	const InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr());
-	if (!key || !key->is_pressed()) {
+	const int code = get_ui_keycode(p_event);
+	if (code == 0) {
 		return false;
 	}
 	Control *current = get_focus_owner();
@@ -429,7 +478,6 @@ bool Control::handle_focus_navigation(SceneTree *p_tree, const Ref<InputEvent> &
 		current = nullptr;
 	}
 	Control *target = nullptr;
-	const int code = key->get_keycode();
 	if (code == KEY_TAB) {
 		if (current) {
 			target = Input::get_singleton()->is_key_pressed(KEY_SHIFT) ? current->find_prev_valid_focus() : current->find_next_valid_focus();

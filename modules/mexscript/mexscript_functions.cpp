@@ -661,6 +661,20 @@ bool mexscript_find_global_constant(const String &p_name, Variant &r_value) {
 			}
 			constants["KEY_" + str_to_upper(str_replace(kv.first, " ", "_"))] = Variant((int64_t)kv.second);
 		}
+		// Manette : mêmes noms que dans Godot.
+		const std::pair<const char *, int> joy_constants[] = {
+			{ "JOY_BUTTON_A", JOY_BUTTON_A }, { "JOY_BUTTON_B", JOY_BUTTON_B }, { "JOY_BUTTON_X", JOY_BUTTON_X }, { "JOY_BUTTON_Y", JOY_BUTTON_Y },
+			{ "JOY_BUTTON_BACK", JOY_BUTTON_BACK }, { "JOY_BUTTON_GUIDE", JOY_BUTTON_GUIDE }, { "JOY_BUTTON_START", JOY_BUTTON_START },
+			{ "JOY_BUTTON_LEFT_STICK", JOY_BUTTON_LEFT_STICK }, { "JOY_BUTTON_RIGHT_STICK", JOY_BUTTON_RIGHT_STICK },
+			{ "JOY_BUTTON_LEFT_SHOULDER", JOY_BUTTON_LEFT_SHOULDER }, { "JOY_BUTTON_RIGHT_SHOULDER", JOY_BUTTON_RIGHT_SHOULDER },
+			{ "JOY_BUTTON_DPAD_UP", JOY_BUTTON_DPAD_UP }, { "JOY_BUTTON_DPAD_DOWN", JOY_BUTTON_DPAD_DOWN },
+			{ "JOY_BUTTON_DPAD_LEFT", JOY_BUTTON_DPAD_LEFT }, { "JOY_BUTTON_DPAD_RIGHT", JOY_BUTTON_DPAD_RIGHT },
+			{ "JOY_AXIS_LEFT_X", JOY_AXIS_LEFT_X }, { "JOY_AXIS_LEFT_Y", JOY_AXIS_LEFT_Y }, { "JOY_AXIS_RIGHT_X", JOY_AXIS_RIGHT_X },
+			{ "JOY_AXIS_RIGHT_Y", JOY_AXIS_RIGHT_Y }, { "JOY_AXIS_TRIGGER_LEFT", JOY_AXIS_TRIGGER_LEFT }, { "JOY_AXIS_TRIGGER_RIGHT", JOY_AXIS_TRIGGER_RIGHT },
+		};
+		for (const auto &kv : joy_constants) {
+			constants[kv.first] = Variant((int64_t)kv.second);
+		}
 		for (int t = 0; t < Variant::VARIANT_MAX; t++) {
 			constants["TYPE_" + str_to_upper(Variant::get_type_name((Variant::Type)t))] = Variant((int64_t)t);
 		}

@@ -2,17 +2,23 @@
 
 #include "window_platform.h"
 
+#include "core/input/input.h"
+
 #include <SDL.h>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <vector>
 
 DisplayServer *DisplayServer::singleton = nullptr;
 
 static SDL_HitTestResult SDLCALL _sdl_hit_test(SDL_Window *p_window, const SDL_Point *p_point, void *p_data);
+namespace {
+void _joypads_init();
+}
 
 DisplayServer::DisplayServer() {
 	singleton = this;
@@ -185,6 +191,7 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 			return ERR_CANT_CREATE;
 		}
 	}
+	_joypads_init();
 	screen_scale = _detect_screen_scale(0);
 	int width = p_options.width, height = p_options.height;
 	if (p_options.scale_with_screen && screen_scale > 1.0f) {
@@ -611,6 +618,120 @@ Error DisplayServer::save_screenshot(const String &p_path) {
 	return err;
 }
 
+// ---------------------------------------------------------------------------
+// Manettes : SDL_GameController, qui donne à toutes les manettes la disposition d'une manette
+// Xbox (c'est aussi la base de données de correspondances qu'utilise Godot).
+// ---------------------------------------------------------------------------
+namespace {
+struct OpenJoypad {
+	SDL_GameController *controller = nullptr;
+	SDL_JoystickID instance = -1;
+};
+std::map<int, OpenJoypad> open_joypads; // numéro de manette (0, 1...) -> manette ouverte
+SDL_JoystickID virtual_joypad_instance = -1; // manette virtuelle des essais
+
+int _joypad_device(SDL_JoystickID p_instance) {
+	for (const auto &kv : open_joypads) {
+		if (kv.second.instance == p_instance) {
+			return kv.first;
+		}
+	}
+	return -1;
+}
+
+void _joypad_open(int p_sdl_index) {
+	if (!SDL_IsGameController(p_sdl_index)) {
+		return; // volants, manches à balai sans correspondance connue : ignorés
+	}
+	SDL_GameController *controller = SDL_GameControllerOpen(p_sdl_index);
+	if (!controller) {
+		return;
+	}
+	const SDL_JoystickID instance = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
+	if (_joypad_device(instance) >= 0) {
+		return; // déjà ouverte
+	}
+	int device = 0;
+	while (open_joypads.count(device)) {
+		device++; // premier numéro libre, comme Godot
+	}
+	open_joypads[device] = { controller, instance };
+	char guid[64] = "";
+	SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(controller)), guid, sizeof(guid));
+	const char *name = SDL_GameControllerName(controller);
+	if (Input::get_singleton()) {
+		Input::get_singleton()->joy_connection_changed(device, true, name ? name : "Manette", guid);
+	}
+}
+
+void _joypad_close(SDL_JoystickID p_instance) {
+	const int device = _joypad_device(p_instance);
+	if (device < 0) {
+		return;
+	}
+	SDL_GameControllerClose(open_joypads[device].controller);
+	open_joypads.erase(device);
+	if (Input::get_singleton()) {
+		Input::get_singleton()->joy_connection_changed(device, false);
+	}
+}
+
+void _joypads_init() {
+	if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) != 0) {
+		return;
+	}
+	if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) {
+		print_warning(String("Manettes indisponibles : ") + SDL_GetError());
+		return;
+	}
+	Input *input = Input::get_singleton();
+	if (!input) {
+		return;
+	}
+	input->set_joy_vibration_handler([](int p_device, float p_weak, float p_strong, float p_duration) {
+		const auto it = open_joypads.find(p_device);
+		if (it != open_joypads.end()) {
+			// SDL : moteur basse fréquence (fort) puis haute fréquence (faible) ; 0 ms = arrêt.
+			const Uint32 ms = (p_weak <= 0 && p_strong <= 0) ? 0 : (p_duration > 0 ? (Uint32)(p_duration * 1000.0f) : SDL_HAPTIC_INFINITY);
+			SDL_GameControllerRumble(it->second.controller, (Uint16)(p_strong * 65535.0f), (Uint16)(p_weak * 65535.0f), ms);
+		}
+	});
+	// Manette virtuelle pour les essais automatiques : MEX_VIRTUAL_JOYPAD=1.
+	const char *wanted = SDL_getenv("MEX_VIRTUAL_JOYPAD");
+	if (wanted && wanted[0] == '1') {
+		const int index = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+		if (index < 0) {
+			print_warning(String("Manette virtuelle impossible : ") + SDL_GetError());
+		} else {
+			virtual_joypad_instance = SDL_JoystickGetDeviceInstanceID(index);
+			input->set_virtual_joy_handler([](int p_kind, int p_index, float p_value) {
+				const int device = _joypad_device(virtual_joypad_instance);
+				if (device < 0) {
+					return;
+				}
+				if (p_kind == 2) {
+					// Débranchement : SDL envoie SDL_CONTROLLERDEVICEREMOVED comme pour une vraie manette.
+					const int count = SDL_NumJoysticks();
+					for (int i = 0; i < count; i++) {
+						if (SDL_JoystickGetDeviceInstanceID(i) == virtual_joypad_instance) {
+							SDL_JoystickDetachVirtual(i);
+							break;
+						}
+					}
+					return;
+				}
+				SDL_Joystick *joystick = SDL_GameControllerGetJoystick(open_joypads[device].controller);
+				if (p_kind == 0) {
+					SDL_JoystickSetVirtualButton(joystick, p_index, p_value > 0.5f ? 1 : 0);
+				} else {
+					SDL_JoystickSetVirtualAxis(joystick, p_index, (Sint16)(std::min(std::max(p_value, -1.0f), 1.0f) * 32767.0f));
+				}
+			});
+		}
+	}
+}
+} // namespace
+
 static int _translate_keycode(SDL_Keycode p_sym) {
 	switch (p_sym) {
 		case SDLK_RCTRL: return KEY_CTRL;
@@ -668,6 +789,40 @@ Ref<InputEvent> DisplayServer::translate_event(const SDL_Event &e) {
 			int mx = 0, my = 0;
 			SDL_GetMouseState(&mx, &my);
 			ev->set_position(Vector2((real_t)mx, (real_t)my));
+			return ev;
+		}
+		case SDL_CONTROLLERDEVICEADDED: {
+			_joypad_open(e.cdevice.which);
+			return Ref<InputEvent>();
+		}
+		case SDL_CONTROLLERDEVICEREMOVED: {
+			_joypad_close(e.cdevice.which);
+			return Ref<InputEvent>();
+		}
+		case SDL_CONTROLLERBUTTONDOWN:
+		case SDL_CONTROLLERBUTTONUP: {
+			const int device = _joypad_device(e.cbutton.which);
+			if (device < 0) {
+				return Ref<InputEvent>();
+			}
+			Ref<InputEventJoypadButton> ev;
+			ev.instantiate();
+			ev->set_device(device);
+			ev->set_button_index(e.cbutton.button); // même numérotation que JoyButton
+			ev->set_pressed(e.type == SDL_CONTROLLERBUTTONDOWN);
+			ev->set_pressure(e.type == SDL_CONTROLLERBUTTONDOWN ? 1.0f : 0.0f);
+			return ev;
+		}
+		case SDL_CONTROLLERAXISMOTION: {
+			const int device = _joypad_device(e.caxis.which);
+			if (device < 0) {
+				return Ref<InputEvent>();
+			}
+			Ref<InputEventJoypadMotion> ev;
+			ev.instantiate();
+			ev->set_device(device);
+			ev->set_axis(e.caxis.axis); // même numérotation que JoyAxis
+			ev->set_axis_value(e.caxis.value < 0 ? e.caxis.value / 32768.0f : e.caxis.value / 32767.0f);
 			return ev;
 		}
 		case SDL_MOUSEMOTION: {

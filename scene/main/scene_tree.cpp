@@ -205,6 +205,7 @@ void SceneTree::process(double p_delta) {
 
 void SceneTree::input_event(const Ref<InputEvent> &p_event) {
 	input_handled = false;
+	Control::begin_input_event(p_event); // manette : équivalent clavier pour l'interface
 	std::vector<ObjectID> list;
 	_collect_nodes(root, list, KIND_INPUT);
 	// Comme dans Godot : du dernier nœud de l'arbre vers le premier.

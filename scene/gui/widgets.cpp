@@ -225,13 +225,12 @@ void Slider::input(const Ref<InputEvent> &p_event) {
 		}
 		return;
 	}
-	InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr());
-	if (!key || !key->is_pressed() || !has_focus()) {
+	const int code = get_ui_keycode(p_event); // clavier, ou croix et stick de la manette
+	if (code == 0 || !has_focus()) {
 		return;
 	}
 	// Les flèches dans l'axe du curseur changent la valeur ; les autres déplacent le focus.
 	const double amount = step > 0 ? step : (max_value - min_value) / 100.0;
-	const int code = key->get_keycode();
 	const int less = vertical ? KEY_DOWN : KEY_LEFT;
 	const int more = vertical ? KEY_UP : KEY_RIGHT;
 	if (code == less || code == more) {
@@ -410,11 +409,10 @@ void OptionButton::input(const Ref<InputEvent> &p_event) {
 		}
 		return;
 	}
-	InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr());
-	if (!key || !key->is_pressed()) {
+	const int code = get_ui_keycode(p_event);
+	if (code == 0) {
 		return;
 	}
-	const int code = key->get_keycode();
 	if (code == KEY_UP || code == KEY_DOWN) {
 		highlighted = Math::clamp(highlighted + (code == KEY_DOWN ? 1 : -1), 0, items.size() - 1);
 		_update_popup();
@@ -577,11 +575,10 @@ void ItemList::input(const Ref<InputEvent> &p_event) {
 		}
 		return;
 	}
-	InputEventKey *key = Object::cast_to<InputEventKey>(p_event.ptr());
-	if (!key || !key->is_pressed() || !has_focus() || items.is_empty()) {
+	const int code = get_ui_keycode(p_event);
+	if (code == 0 || !has_focus() || items.is_empty()) {
 		return;
 	}
-	const int code = key->get_keycode();
 	if (code == KEY_UP || code == KEY_DOWN) {
 		const int index = Math::clamp(selected + (code == KEY_DOWN ? 1 : -1), 0, items.size() - 1);
 		if (index == selected) {

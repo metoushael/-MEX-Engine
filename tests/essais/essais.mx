@@ -17,6 +17,8 @@ var reseau = {}
 var bouton_traduit
 var largeur_fr = 0
 var cible_libre
+var manette_virtuelle = -1
+var evenements_manette = 0
 
 func verifier(nom, condition):
 	if condition:
@@ -32,6 +34,7 @@ func _ready():
 	essai_gltf()
 	essai_squelette()
 	essai_maths()
+	essai_manette()
 	essai_particules()
 	essai_shader()
 	essai_lumieres()
@@ -173,6 +176,103 @@ func essai_maths():
 	verifier("maths : décibels", abs(db_to_linear(-6.0) - 0.50119) < 0.0001 and abs(linear_to_db(0.5) + 6.0206) < 0.0001)
 	verifier("maths : posmod et nearest_po2", posmod(-7, 3) == 2 and posmod(7, -3) == -2 and nearest_po2(100) == 128 and nearest_po2(64) == 64)
 	verifier("maths : is_inf, is_finite, tanh", is_inf(1.0 / 0.0) and is_finite(3.0) and not is_finite(1.0 / 0.0) and abs(tanh(1.0) - 0.76159) < 0.0001)
+
+func axe_manette(axe, valeur):
+	var mouvement = InputEventJoypadMotion.new()
+	mouvement.device = 0
+	mouvement.axis = axe
+	mouvement.axis_value = valeur
+	Input.parse_input_event(mouvement)
+	return mouvement
+
+func bouton_manette(bouton, appuye):
+	var evenement = InputEventJoypadButton.new()
+	evenement.device = 0
+	evenement.button_index = bouton
+	evenement.pressed = appuye
+	Input.parse_input_event(evenement)
+	return evenement
+
+func essai_manette():
+	for nom in ["m_gauche", "m_droite", "m_haut", "m_bas", "m_saut"]:
+		InputMap.add_action(nom)
+	InputMap.action_add_joy_axis("m_gauche", JOY_AXIS_LEFT_X, -1.0)
+	InputMap.action_add_joy_axis("m_droite", JOY_AXIS_LEFT_X, 1.0)
+	InputMap.action_add_joy_axis("m_haut", JOY_AXIS_LEFT_Y, -1.0)
+	InputMap.action_add_joy_axis("m_bas", JOY_AXIS_LEFT_Y, 1.0)
+	InputMap.action_add_joy_button("m_saut", JOY_BUTTON_A)
+	verifier("manette : zones mortes par défaut", abs(InputMap.action_get_deadzone("m_droite") - 0.2) < 0.001 and abs(InputMap.action_get_deadzone("ui_left") - 0.5) < 0.001)
+	var appui = bouton_manette(JOY_BUTTON_A, true)
+	verifier("manette : bouton vers action", Input.is_action_pressed("m_saut") and Input.is_joy_button_pressed(0, JOY_BUTTON_A) and appui.is_action("m_saut") and Input.get_action_strength("m_saut") == 1.0)
+	verifier("manette : A valide l'interface (ui_accept)", Input.is_action_pressed("ui_accept"))
+	bouton_manette(JOY_BUTTON_A, false)
+	verifier("manette : bouton relâché", not Input.is_action_pressed("m_saut") and not Input.is_joy_button_pressed(0, JOY_BUTTON_A))
+	axe_manette(JOY_AXIS_LEFT_X, 0.1)
+	verifier("manette : sous la zone morte, rien", not Input.is_action_pressed("m_droite") and Input.get_action_strength("m_droite") == 0.0)
+	var pousse = axe_manette(JOY_AXIS_LEFT_X, 0.6)
+	verifier("manette : axe vers action", Input.is_action_pressed("m_droite") and not Input.is_action_pressed("m_gauche") and pousse.is_action("m_droite") and not pousse.is_action("m_gauche"))
+	verifier("manette : force de l'action", abs(Input.get_action_strength("m_droite") - 0.5) < 0.001 and abs(Input.get_action_raw_strength("m_droite") - 0.6) < 0.001 and abs(Input.get_axis("m_gauche", "m_droite") - 0.5) < 0.001)
+	verifier("manette : valeur de l'axe", abs(Input.get_joy_axis(0, JOY_AXIS_LEFT_X) - 0.6) < 0.001)
+	var direction = Input.get_vector("m_gauche", "m_droite", "m_haut", "m_bas")
+	verifier("manette : get_vector sur un axe", abs(direction.x - 0.5) < 0.001 and direction.y == 0.0)
+	axe_manette(JOY_AXIS_LEFT_X, -1.0)
+	axe_manette(JOY_AXIS_LEFT_Y, 1.0)
+	direction = Input.get_vector("m_gauche", "m_droite", "m_haut", "m_bas")
+	verifier("manette : get_vector en diagonale, longueur 1", abs(direction.x + 0.70711) < 0.001 and abs(direction.y - 0.70711) < 0.001)
+	axe_manette(JOY_AXIS_LEFT_X, 0.1)
+	axe_manette(JOY_AXIS_LEFT_Y, 0.1)
+	verifier("manette : zone morte circulaire", Input.get_vector("m_gauche", "m_droite", "m_haut", "m_bas") == Vector2(0, 0))
+	InputMap.action_set_deadzone("m_droite", 0.5)
+	axe_manette(JOY_AXIS_LEFT_X, 0.4)
+	verifier("manette : zone morte réglée par action", not Input.is_action_pressed("m_droite"))
+	axe_manette(JOY_AXIS_LEFT_X, 0.0)
+	axe_manette(JOY_AXIS_LEFT_Y, 0.0)
+	for nom in ["m_gauche", "m_droite", "m_haut", "m_bas", "m_saut"]:
+		InputMap.erase_action(nom)
+
+func pousser_bouton(bouton):
+	# Par l'arbre de scène, comme un vrai appui : l'interface le reçoit.
+	for appuye in [true, false]:
+		var e = InputEventJoypadButton.new()
+		e.button_index = bouton
+		e.pressed = appuye
+		get_tree().push_input(e)
+
+func pousser_axe(axe, valeur):
+	var e = InputEventJoypadMotion.new()
+	e.axis = axe
+	e.axis_value = valeur
+	get_tree().push_input(e)
+
+func essai_manette_interface():
+	var b = ui.boutons
+	b[0].grab_focus()
+	pousser_bouton(JOY_BUTTON_DPAD_DOWN)
+	verifier("manette : la croix déplace le focus", b[1].has_focus())
+	pousser_axe(JOY_AXIS_LEFT_Y, 0.9)
+	verifier("manette : le stick déplace le focus", b[2].has_focus())
+	pousser_axe(JOY_AXIS_LEFT_Y, 0.0)
+	pousser_axe(JOY_AXIS_LEFT_Y, -0.9)
+	pousser_axe(JOY_AXIS_LEFT_Y, -0.8)
+	verifier("manette : un seul pas par poussée du stick", b[1].has_focus())
+	pousser_axe(JOY_AXIS_LEFT_Y, 0.0)
+	clics = 0
+	pousser_bouton(JOY_BUTTON_A)
+	verifier("manette : A active le bouton qui a le focus", clics == 1)
+	pousser_bouton(JOY_BUTTON_B)
+	verifier("manette : B retire le focus", not b[1].has_focus())
+	# Liste déroulante ouverte : la croix change de ligne, A valide.
+	var deroulant = ui.deroulant
+	deroulant.select(2)
+	choix = -1
+	clic(deroulant.global_position + deroulant.size * 0.5)
+	pousser_bouton(JOY_BUTTON_DPAD_UP)
+	pousser_bouton(JOY_BUTTON_A)
+	verifier("manette : choix dans une liste déroulante", deroulant.selected == 1 and choix == 1)
+
+func _input(event):
+	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		evenements_manette += 1
 
 func essai_particules():
 	particules = CPUParticles2D.new()
@@ -649,5 +749,19 @@ func _process(delta):
 		verifier("réseau : réponse puis fermeture détectée", reseau.client.get_data() == "réponse" and reseau.client.get_status() == StreamPeerTCP.STATUS_NONE)
 	if images == 39:
 		verifier("tween : avance avec l'arbre de scène", cible_libre.position.x == 10 and fins == 2 and not tween_libre.is_valid())
+	if images == 26:
+		essai_manette_interface()
+		# Manette virtuelle (MEX_VIRTUAL_JOYPAD=1) : le trajet complet, de SDL jusqu'au script.
+		for numero in Input.get_connected_joypads():
+			if Input.get_joy_name(numero).find("Virtual") >= 0:
+				manette_virtuelle = numero
+		if manette_virtuelle >= 0:
+			evenements_manette = 0
+			Input.virtual_joy_button(JOY_BUTTON_X, true)
+			Input.virtual_joy_axis(JOY_AXIS_RIGHT_X, -0.5)
+	if images == 32 and manette_virtuelle >= 0:
+		verifier("manette virtuelle : de SDL jusqu'au script", Input.is_joy_button_pressed(manette_virtuelle, JOY_BUTTON_X) and abs(Input.get_joy_axis(manette_virtuelle, JOY_AXIS_RIGHT_X) + 0.5) < 0.01 and evenements_manette >= 2)
+		Input.virtual_joy_button(JOY_BUTTON_X, false)
+		Input.virtual_joy_axis(JOY_AXIS_RIGHT_X, 0.0)
 	if images == 40:
 		print("BILAN  ", reussis, " réussis, ", echecs, " échecs")
