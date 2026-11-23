@@ -192,6 +192,9 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 		}
 	}
 	_joypads_init();
+	if (Input::get_singleton()) {
+		Input::get_singleton()->set_touchscreen_present(SDL_GetNumTouchDevices() > 0);
+	}
 	screen_scale = _detect_screen_scale(0);
 	int width = p_options.width, height = p_options.height;
 	if (p_options.scale_with_screen && screen_scale > 1.0f) {
@@ -249,11 +252,17 @@ Error DisplayServer::create(const WindowOptions &p_options) {
 	if (!requested.empty()) {
 		candidates.push_back(requested);
 	}
+#ifdef __EMSCRIPTEN__
+	// Navigateur : un seul pilote existe (WebGL, « opengles2 » pour SDL).
+	candidates.clear();
+	candidates.push_back("");
+#else
 	for (const char *name : { "opengl", "", "software" }) {
 		if (requested.empty() || requested != name) {
 			candidates.push_back(name);
 		}
 	}
+#endif
 	render_driver = String();
 	render_details = String();
 	render_note = String();
@@ -789,6 +798,64 @@ Ref<InputEvent> DisplayServer::translate_event(const SDL_Event &e) {
 			int mx = 0, my = 0;
 			SDL_GetMouseState(&mx, &my);
 			ev->set_position(Vector2((real_t)mx, (real_t)my));
+			return ev;
+		}
+		case SDL_FINGERDOWN:
+		case SDL_FINGERUP:
+		case SDL_FINGERMOTION: {
+			if (e.tfinger.touchId == SDL_MOUSE_TOUCHID) {
+				return Ref<InputEvent>(); // souris déguisée en doigt par SDL : MEX a sa propre émulation
+			}
+			// SDL donne des coordonnées de 0 à 1, rapportées à l'image du jeu quand une
+			// résolution logique est fixée, sinon à la fenêtre.
+			int w = 0, h = 0;
+			if (singleton && singleton->renderer) {
+				SDL_RenderGetLogicalSize(singleton->renderer, &w, &h);
+			}
+			if ((w <= 0 || h <= 0) && singleton && singleton->window) {
+				SDL_GetWindowSize(singleton->window, &w, &h);
+			}
+			// Numéros de doigts 0, 1, 2... dans l'ordre où ils se posent, comme dans Godot.
+			static std::map<SDL_FingerID, int> fingers;
+			int index = 0;
+			const auto known = fingers.find(e.tfinger.fingerId);
+			if (known != fingers.end()) {
+				index = known->second;
+			} else {
+				std::vector<bool> used(fingers.size() + 1, false);
+				for (const auto &kv : fingers) {
+					if (kv.second < (int)used.size()) {
+						used[kv.second] = true;
+					}
+				}
+				while (used[index]) {
+					index++;
+				}
+				if (e.type != SDL_FINGERUP) {
+					fingers[e.tfinger.fingerId] = index;
+				}
+			}
+			if (Input::get_singleton()) {
+				Input::get_singleton()->set_touchscreen_present(true);
+			}
+			const Vector2 position(e.tfinger.x * w, e.tfinger.y * h);
+			if (e.type == SDL_FINGERMOTION) {
+				Ref<InputEventScreenDrag> ev;
+				ev.instantiate();
+				ev->set_index(index);
+				ev->set_position(position);
+				ev->set_relative(Vector2(e.tfinger.dx * w, e.tfinger.dy * h));
+				ev->set_pressure(e.tfinger.pressure);
+				return ev;
+			}
+			if (e.type == SDL_FINGERUP) {
+				fingers.erase(e.tfinger.fingerId);
+			}
+			Ref<InputEventScreenTouch> ev;
+			ev.instantiate();
+			ev->set_index(index);
+			ev->set_position(position);
+			ev->set_pressed(e.type == SDL_FINGERDOWN);
 			return ev;
 		}
 		case SDL_CONTROLLERDEVICEADDED: {

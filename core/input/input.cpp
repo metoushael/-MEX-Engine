@@ -151,6 +151,49 @@ void InputEventMouseMotion::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "relative"), "set_relative", "get_relative");
 }
 
+String InputEventScreenTouch::as_text() const {
+	return "Doigt " + std::to_string(index) + (pressed ? " posé" : " levé");
+}
+
+void InputEventScreenTouch::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_index", "index"), &InputEventScreenTouch::set_index);
+	ClassDB::bind_method(D_METHOD("get_index"), &InputEventScreenTouch::get_index);
+	ClassDB::bind_method(D_METHOD("set_position", "position"), &InputEventScreenTouch::set_position);
+	ClassDB::bind_method(D_METHOD("get_position"), &InputEventScreenTouch::get_position);
+	ClassDB::bind_method(D_METHOD("set_pressed", "pressed"), &InputEventScreenTouch::set_pressed);
+	ClassDB::bind_method(D_METHOD("set_canceled", "canceled"), &InputEventScreenTouch::set_canceled);
+	ClassDB::bind_method(D_METHOD("is_canceled"), &InputEventScreenTouch::is_canceled);
+	ClassDB::bind_method(D_METHOD("set_double_tap", "double_tap"), &InputEventScreenTouch::set_double_tap);
+	ClassDB::bind_method(D_METHOD("is_double_tap"), &InputEventScreenTouch::is_double_tap);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "index"), "set_index", "get_index");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "position"), "set_position", "get_position");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pressed"), "set_pressed", "is_pressed");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "canceled"), "set_canceled", "is_canceled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "double_tap"), "set_double_tap", "is_double_tap");
+}
+
+String InputEventScreenDrag::as_text() const {
+	return "Doigt " + std::to_string(index) + " déplacé";
+}
+
+void InputEventScreenDrag::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_index", "index"), &InputEventScreenDrag::set_index);
+	ClassDB::bind_method(D_METHOD("get_index"), &InputEventScreenDrag::get_index);
+	ClassDB::bind_method(D_METHOD("set_position", "position"), &InputEventScreenDrag::set_position);
+	ClassDB::bind_method(D_METHOD("get_position"), &InputEventScreenDrag::get_position);
+	ClassDB::bind_method(D_METHOD("set_relative", "relative"), &InputEventScreenDrag::set_relative);
+	ClassDB::bind_method(D_METHOD("get_relative"), &InputEventScreenDrag::get_relative);
+	ClassDB::bind_method(D_METHOD("set_velocity", "velocity"), &InputEventScreenDrag::set_velocity);
+	ClassDB::bind_method(D_METHOD("get_velocity"), &InputEventScreenDrag::get_velocity);
+	ClassDB::bind_method(D_METHOD("set_pressure", "pressure"), &InputEventScreenDrag::set_pressure);
+	ClassDB::bind_method(D_METHOD("get_pressure"), &InputEventScreenDrag::get_pressure);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "index"), "set_index", "get_index");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "position"), "set_position", "get_position");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "relative"), "set_relative", "get_relative");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "velocity"), "set_velocity", "get_velocity");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pressure"), "set_pressure", "get_pressure");
+}
+
 String InputEventJoypadButton::as_text() const {
 	return "Manette " + std::to_string(device) + " : " + input_code_get_name(input_code_joy_button(button_index));
 }
@@ -375,12 +418,22 @@ void Input::_update_actions() {
 				pressed = true;
 			}
 		}
+		const auto virtual_axis = virtual_axes.find(kv.first);
+		if (virtual_axis != virtual_axes.end()) {
+			raw = std::max(raw, virtual_axis->second);
+		}
 		const float deadzone = InputMap::get_singleton()->action_get_deadzone(kv.first);
 		const bool analog = !pressed && raw > 0.0f && raw >= deadzone; // Godot : appuyé dès la zone morte atteinte
-		_set_action(kv.first, pressed || analog);
+		const auto forced = forced_actions.find(kv.first);
+		_set_action(kv.first, pressed || analog || forced != forced_actions.end());
 		ActionState &state = action_states[kv.first];
 		if (pressed) {
 			state.strength = state.raw_strength = 1.0f;
+		} else if (forced != forced_actions.end()) {
+			// action_press : la force demandée, sans zone morte (elle est déjà traitée par l'appelant).
+			const float analog_strength = analog ? std::min((raw - deadzone) / std::max(1.0f - deadzone, 0.0001f), 1.0f) : 0.0f;
+			state.strength = std::max(forced->second, analog_strength);
+			state.raw_strength = std::max(forced->second, raw);
 		} else {
 			// Comme Godot : la course utile (zone morte -> 1) est ramenée sur 0 -> 1.
 			state.raw_strength = raw;
@@ -443,6 +496,9 @@ void Input::parse_input_event(const Ref<InputEvent> &p_event) {
 
 void Input::release_all() {
 	codes_pressed.clear();
+	forced_actions.clear();
+	virtual_axes.clear();
+	mouse_touch_down = false;
 	for (auto &kv : joypads) {
 		kv.second.buttons.clear();
 		for (float &axis : kv.second.axes) {
@@ -645,12 +701,56 @@ void Input::virtual_joy_disconnect() {
 	}
 }
 
-void Input::action_press(const String &p_action) {
-	_set_action(p_action, true);
+void Input::action_press(const String &p_action, float p_strength) {
+	if (!InputMap::get_singleton()->has_action(p_action)) {
+		_warn_unknown_action(p_action);
+		return;
+	}
+	forced_actions[p_action] = std::min(std::max(p_strength, 0.0f), 1.0f);
+	_update_actions();
 }
 
 void Input::action_release(const String &p_action) {
-	_set_action(p_action, false);
+	forced_actions.erase(p_action);
+	_update_actions();
+}
+
+void Input::action_set_axis_value(const String &p_action, float p_value) {
+	if (p_value > 0.0f) {
+		virtual_axes[p_action] = std::min(p_value, 1.0f);
+	} else {
+		virtual_axes.erase(p_action);
+	}
+	_update_actions();
+}
+
+Ref<InputEvent> Input::make_touch_from_mouse(const Ref<InputEvent> &p_event) {
+	if (!emulate_touch_from_mouse) {
+		return Ref<InputEvent>();
+	}
+	if (const InputEventMouseButton *button = Object::cast_to<InputEventMouseButton>(p_event.ptr())) {
+		if (button->get_button_index() != MOUSE_BUTTON_LEFT || button->is_pressed() == mouse_touch_down) {
+			return Ref<InputEvent>();
+		}
+		mouse_touch_down = button->is_pressed();
+		Ref<InputEventScreenTouch> touch;
+		touch.instantiate();
+		touch->set_position(button->get_position());
+		touch->set_pressed(mouse_touch_down);
+		return touch;
+	}
+	if (const InputEventMouseMotion *motion = Object::cast_to<InputEventMouseMotion>(p_event.ptr())) {
+		if (!mouse_touch_down) {
+			return Ref<InputEvent>();
+		}
+		Ref<InputEventScreenDrag> drag;
+		drag.instantiate();
+		drag->set_position(motion->get_position());
+		drag->set_relative(motion->get_relative());
+		drag->set_pressure(1.0f);
+		return drag;
+	}
+	return Ref<InputEvent>();
 }
 
 void Input::_bind_methods() {
@@ -664,6 +764,9 @@ void Input::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_vector", "neg_x", "pos_x", "neg_y", "pos_y", "deadzone"), &Input::get_vector, DEFVAL(-1.0));
 	ClassDB::bind_method(D_METHOD("get_action_raw_strength", "action"), &Input::get_action_raw_strength);
 	ClassDB::bind_method(D_METHOD("parse_input_event", "event"), &Input::parse_input_event);
+	ClassDB::bind_method(D_METHOD("is_touchscreen_available"), &Input::is_touchscreen_available);
+	ClassDB::bind_method(D_METHOD("set_emulate_touch_from_mouse", "enable"), &Input::set_emulate_touch_from_mouse);
+	ClassDB::bind_method(D_METHOD("is_emulating_touch_from_mouse"), &Input::is_emulating_touch_from_mouse);
 	ClassDB::bind_method(D_METHOD("get_connected_joypads"), &Input::get_connected_joypads);
 	ClassDB::bind_method(D_METHOD("get_joy_name", "device"), &Input::get_joy_name);
 	ClassDB::bind_method(D_METHOD("get_joy_guid", "device"), &Input::get_joy_guid);

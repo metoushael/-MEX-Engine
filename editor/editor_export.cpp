@@ -8,7 +8,10 @@
 #include "core/string/ustring.h"
 
 #include "editor_export.h"
+#include "editor_icons.gen.h"
 #include "editor_ui.h"
+
+#include <SDL.h>
 
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
@@ -112,6 +115,7 @@ void EditorNode::_draw_export_dialog() {
 		} else {
 			ExportPreset &preset = export_presets[export_selected];
 			const bool macos = preset.platform == "macOS";
+			const bool web = preset.platform == EditorExport::get_web_platform();
 			const auto field = [&](const char *p_label, const char *p_id, String &r_value, const char *p_hint = nullptr) {
 				ImGui::TextUnformatted(p_label);
 				ImGui::SetNextItemWidth(-FLT_MIN);
@@ -124,19 +128,38 @@ void EditorNode::_draw_export_dialog() {
 			};
 			field("Nom", "##name", preset.name);
 			ImGui::TextDisabled("Système : %s", preset.platform.c_str());
-			field(macos ? "Paquet à produire (.app)" : "Exécutable à produire", "##path", preset.export_path);
+			field(macos ? "Paquet à produire (.app)" : (web ? "Page à produire (.html)" : "Exécutable à produire"), "##path", preset.export_path);
 			ImGui::TextDisabled("Relatif au dossier du projet, ou chemin complet.");
 			const String found = EditorExport::find_template(preset.platform);
-			field("Modèle personnalisé (exécutable mex-jeu du système visé)", "##template", preset.custom_template, found.empty() ? "introuvable : voir ci-dessous" : found.c_str());
+			field(web ? "Modèle personnalisé (fichier mex-jeu.js)" : "Modèle personnalisé (exécutable mex-jeu du système visé)", "##template", preset.custom_template, found.empty() ? "introuvable : voir ci-dessous" : found.c_str());
 			if (preset.custom_template.empty() && found.empty()) {
 				ImGui::PushStyleColor(ImGuiCol_Text, EditorUI::col(palette.warning));
-				ImGui::TextWrapped("Modèle introuvable. Copiez le mex-jeu de ce système ici :\n%s", EditorExport::get_template_hint(preset.platform).c_str());
+				ImGui::TextWrapped(web ? "Modèle introuvable. Copiez le fichier mex-jeu.js ici :\n%s" : "Modèle introuvable. Copiez le mex-jeu de ce système ici :\n%s", EditorExport::get_template_hint(preset.platform).c_str());
 				ImGui::PopStyleColor();
 			}
 			ImGui::Spacing();
 			if (macos) {
 				field("Identifiant du paquet", "##bundle", preset.bundle_identifier, "com.exemple.jeu");
 				ImGui::TextDisabled("Le paquet n'est pas signé : au premier lancement, clic droit > Ouvrir.");
+			} else if (web) {
+				changed |= ImGui::Checkbox("Tout réunir dans la page", &preset.embed_pck);
+				ImGui::SetItemTooltip("Cochée : un seul fichier .html, qui s'ouvre d'un double-clic.\nDécochée : la page, le moteur « .js » et l'archive « .pck » ; plus léger à télécharger,\nmais à placer sur un serveur web.");
+				ImGui::PushTextWrapPos(0.0f);
+				ImGui::TextDisabled("Jeux 2D. Le rendu 3D, les shaders et les lumières 2D ne sont pas disponibles dans le navigateur.");
+				ImGui::PopTextWrapPos();
+				const String page_url = EditorExport::get_web_page_url(project_dir, preset);
+				ImGui::BeginDisabled(page_url.empty());
+				if (ImGui::Button(ICON_PLAY "  Ouvrir dans le navigateur")) {
+					if (SDL_OpenURL(page_url.c_str()) != 0) {
+						print_error(String("Impossible d'ouvrir le navigateur : ") + SDL_GetError());
+					}
+				}
+				ImGui::EndDisabled();
+				if (page_url.empty()) {
+					ImGui::SetItemTooltip("Exportez d'abord le jeu avec « Tout réunir dans la page » cochée.");
+				} else {
+					ImGui::SetItemTooltip("%s", page_url.c_str());
+				}
 			} else {
 				changed |= ImGui::Checkbox("Incorporer l'archive à l'exécutable", &preset.embed_pck);
 				ImGui::SetItemTooltip("Cochée : un seul fichier à distribuer.\nDécochée : l'exécutable et une archive « .pck » du même nom, à garder ensemble.");

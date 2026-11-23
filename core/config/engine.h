@@ -56,6 +56,7 @@ public:
 		return it == singletons.end() ? nullptr : it->second;
 	}
 	bool has_singleton(const String &p_name) const { return singletons.count(p_name) > 0; }
+	void remove_singleton(const String &p_name) { singletons.erase(p_name); }
 
 	Engine() { singleton = this; }
 	~Engine() {

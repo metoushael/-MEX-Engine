@@ -1,6 +1,7 @@
 // Éditeur de script intégré et fenêtre « Paramètres du projet ».
 #include "editor_node.h"
 
+#include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/input/input.h"
 #include "core/input/keyboard.h"
@@ -248,7 +249,7 @@ void EditorNode::_draw_script_dock() {
 		ImGui::SetKeyboardFocusHere();
 	}
 	if (font_mono) {
-		ImGui::PushFont(font_mono, 0.0f);
+		ImGui::PushFont(font_mono, pref_code_font_size > 0.0f ? ES(pref_code_font_size) : 0.0f);
 	}
 	const ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_CallbackAlways;
 	if (ImGui::InputTextMultiline("##code", &script_text, ImVec2(-FLT_MIN, -footer - 1), flags, _script_edit_callback, &state)) {
@@ -387,7 +388,10 @@ void EditorNode::_draw_project_settings() {
 			ImGui::SeparatorText("Application");
 			edit_string("Nom du jeu", "application/name");
 			edit_string("Icône de la fenêtre", "application/icon");
-			ImGui::SetItemTooltip("Image du projet, par exemple res://icone.png. Vide : icône de MEX.");
+			ImGui::SetItemTooltip("Image du projet, par exemple res://icon.png : logo dans le gestionnaire de projets\net icône de la fenêtre du jeu. Vide : logo dessiné d'après le nom du projet.");
+			edit_string("Version", "application/version");
+			ImGui::SetItemTooltip("Version du jeu, par exemple 1.0.0. Lisible en script :\nProjectSettings.get_setting(\"application/version\")");
+			edit_string("Description", "application/description");
 			{
 				const String main_scene = ps->get_setting("application/main_scene").as_string();
 				ImGui::SetNextItemWidth(ES(340));
@@ -417,6 +421,12 @@ void EditorNode::_draw_project_settings() {
 			edit_bool("Barre de titre sombre", "display/dark_title_bar");
 			ImGui::SetItemTooltip("Barre de titre de la fenêtre du jeu en version sombre (Windows 10 et 11, GNOME et environnements proches)");
 			edit_bool("Plein écran", "display/fullscreen");
+			edit_bool("Agrandie au démarrage", "display/maximized");
+			edit_bool("Sans bordure", "display/borderless");
+			ImGui::SetItemTooltip("Fenêtre du jeu sans barre de titre ni cadre");
+			edit_bool("Toujours au premier plan", "display/always_on_top");
+			edit_int("Images par seconde au plus", "display/max_fps", 0, 1000);
+			ImGui::SetItemTooltip("0 : pas de limite (la synchronisation verticale suffit en général)");
 			edit_bool("Synchronisation verticale", "display/vsync");
 
 			ImGui::SeparatorText("Rendu");
@@ -455,9 +465,106 @@ void EditorNode::_draw_project_settings() {
 			}
 			edit_int("Pas de physique par seconde", "physics/ticks_per_second", 10, 240);
 			edit_bool("Afficher les formes de collision en jeu", "debug/visible_collision_shapes");
+
+			ImGui::SeparatorText("Écran tactile");
+			edit_bool("Simuler l'écran tactile avec la souris", "input_devices/pointing/emulate_touch_from_mouse");
+			ImGui::SetItemTooltip("Le clic gauche agit comme un doigt : pour essayer sur un ordinateur les\ncommandes tactiles (TouchScreenButton, VirtualJoystick). À décocher avant de publier.");
+			edit_bool("Un toucher agit aussi comme un clic", "input_devices/pointing/emulate_mouse_from_touch");
+			ImGui::SetItemTooltip("Sur un écran tactile, les boutons de l'interface répondent au doigt.");
 			ImGui::EndTabItem();
 		}
 
+		if (ImGui::BeginTabItem("Chargement automatique")) {
+			// Nœuds créés au lancement du jeu, avant la première scène, et gardés d'une scène à
+			// l'autre : score, sauvegarde, musique... Les scripts les appellent par leur nom.
+			static String new_name;
+			static String new_path;
+			ImGui::PushTextWrapPos(0.0f);
+			ImGui::TextDisabled("Un script ou une scène chargé au lancement du jeu et gardé d'une scène à l'autre (score, musique, sauvegarde). Tous les scripts l'appellent par son nom : Partie.score += 1");
+			ImGui::PopTextWrapPos();
+			ImGui::Spacing();
+			String to_remove;
+			if (ImGui::BeginTable("##autoloads", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
+				ImGui::TableSetupColumn("Nom", ImGuiTableColumnFlags_WidthFixed, ES(150));
+				ImGui::TableSetupColumn("Fichier", ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed, ES(34));
+				ImGui::TableHeadersRow();
+				for (const auto &entry : ps->get_all_settings()) {
+					if (!str_begins_with(entry.first, "autoload/")) {
+						continue;
+					}
+					ImGui::PushID(entry.first.c_str());
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ImGui::AlignTextToFramePadding();
+					ImGui::TextUnformatted(entry.first.c_str() + 9);
+					ImGui::TableNextColumn();
+					const String path = entry.second.as_string();
+					ImGui::TextUnformatted(path.c_str());
+					if (!FileAccess::exists(path)) {
+						ImGui::SameLine();
+						ImGui::TextColored(ImVec4(0.92f, 0.36f, 0.33f, 1.0f), ICON_WARNING "  fichier absent");
+					}
+					ImGui::TableNextColumn();
+					if (ImGui::Button(ICON_TRASH)) {
+						to_remove = entry.first;
+					}
+					ImGui::SetItemTooltip("Retirer ce chargement automatique (le fichier n'est pas supprimé)");
+					ImGui::PopID();
+				}
+				ImGui::EndTable();
+			}
+			if (!to_remove.empty()) {
+				ps->erase_setting(to_remove);
+				changed = true;
+			}
+			ImGui::Spacing();
+			ImGui::SetNextItemWidth(ES(150));
+			ImGui::InputTextWithHint("##autoload_name", "Nom (ex. Partie)", &new_name);
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(ES(280));
+			if (ImGui::BeginCombo("##autoload_path", new_path.empty() ? "<script ou scène>" : new_path.c_str())) {
+				for (const String &file : fs_files) {
+					const String extension = path_get_extension(file);
+					if (extension != "mx" && extension != "scn") {
+						continue;
+					}
+					if (ImGui::Selectable(file.c_str(), file == new_path)) {
+						new_path = file;
+						if (new_name.empty()) {
+							// Nom proposé : celui du fichier, avec une majuscule.
+							const size_t slash = file.rfind('/');
+							new_name = file.substr(slash + 1, file.rfind('.') - slash - 1);
+							if (!new_name.empty() && new_name[0] >= 'a' && new_name[0] <= 'z') {
+								new_name[0] = (char)(new_name[0] - 'a' + 'A');
+							}
+						}
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SameLine();
+			// Un nom utilisable dans un script : lettres, chiffres, souligné ; pas un nom du moteur.
+			bool valid_name = !new_name.empty() && !(new_name[0] >= '0' && new_name[0] <= '9');
+			for (const char c : new_name) {
+				valid_name = valid_name && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_');
+			}
+			const bool taken = valid_name && (ClassDB::class_exists(new_name) || Engine::get_singleton()->has_singleton(new_name));
+			ImGui::BeginDisabled(!valid_name || taken || new_path.empty());
+			if (ImGui::Button(ICON_PLUS "  Ajouter")) {
+				ps->set_setting("autoload/" + new_name, Variant(new_path));
+				new_name.clear();
+				new_path.clear();
+				changed = true;
+			}
+			ImGui::EndDisabled();
+			if (taken) {
+				ImGui::TextColored(ImVec4(0.92f, 0.36f, 0.33f, 1.0f), "« %s » est déjà le nom d'une classe ou d'un objet du moteur.", new_name.c_str());
+			} else if (!new_name.empty() && !valid_name) {
+				ImGui::TextColored(ImVec4(0.92f, 0.36f, 0.33f, 1.0f), "Le nom ne contient que des lettres sans accent, des chiffres et « _ ».");
+			}
+			ImGui::EndTabItem();
+		}
 		if (ImGui::BeginTabItem("Contrôles")) {
 			ImGui::TextWrapped("Les actions s'utilisent dans les scripts : Input.is_action_pressed(\"sauter\"), Input.get_axis(\"gauche\", \"droite\")...");
 			ImGui::Spacing();

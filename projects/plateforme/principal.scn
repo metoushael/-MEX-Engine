@@ -93,3 +93,18 @@ size = Vector2(600, 24)
 text = "Flèches ou A/D : se déplacer   -   Espace : sauter   -   R : recommencer   -   Échap : menu"
 font_size = 14
 font_color = Color(1, 1, 1, 0.7)
+
+[node name="Stick" type="VirtualJoystick" parent="HUD"]
+position = Vector2(120, 430)
+radius = 70.0
+action_left = "gauche"
+action_right = "droite"
+action_up = ""
+action_down = ""
+visibility_mode = 1
+
+[node name="Saut" type="TouchScreenButton" parent="HUD"]
+position = Vector2(800, 390)
+radius = 50.0
+action = "sauter"
+visibility_mode = 1

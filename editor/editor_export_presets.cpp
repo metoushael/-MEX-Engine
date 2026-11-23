@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <iterator>
 #include <filesystem>
 #include <fstream>
 
@@ -23,6 +25,7 @@ namespace {
 const char *PLATFORM_WINDOWS = "Windows Desktop";
 const char *PLATFORM_LINUX = "Linux";
 const char *PLATFORM_MACOS = "macOS";
+const char *PLATFORM_WEB = "Web";
 
 String _generic(const fs::path &p_path) {
 	return str_replace(p_path.lexically_normal().u8string(), "\\", "/");
@@ -49,11 +52,34 @@ String _platform_id(const String &p_platform) {
 	if (p_platform == PLATFORM_WINDOWS) {
 		return "windows-x86_64";
 	}
+	if (p_platform == PLATFORM_WEB) {
+		return "web-wasm32";
+	}
 	return p_platform == PLATFORM_MACOS ? "macos-universal" : "linux-x86_64";
 }
 
 String _template_name(const String &p_platform) {
+	if (p_platform == PLATFORM_WEB) {
+		return "mex-jeu.js";
+	}
 	return p_platform == PLATFORM_WINDOWS ? "mex-jeu.exe" : "mex-jeu";
+}
+
+String _base64(const std::vector<uint8_t> &p_data) {
+	static const char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	String out;
+	out.reserve((p_data.size() + 2) / 3 * 4);
+	for (size_t i = 0; i < p_data.size(); i += 3) {
+		const uint32_t a = p_data[i];
+		const uint32_t b = i + 1 < p_data.size() ? p_data[i + 1] : 0;
+		const uint32_t c = i + 2 < p_data.size() ? p_data[i + 2] : 0;
+		const uint32_t triple = (a << 16) | (b << 8) | c;
+		out += alphabet[(triple >> 18) & 63];
+		out += alphabet[(triple >> 12) & 63];
+		out += i + 1 < p_data.size() ? alphabet[(triple >> 6) & 63] : '=';
+		out += i + 2 < p_data.size() ? alphabet[triple & 63] : '=';
+	}
+	return out;
 }
 
 // Comparaison avec jokers, portée de String::match de Godot (core/string/ustring.cpp).
@@ -98,7 +124,46 @@ String _xml(const String &p_text) {
 } // namespace
 
 std::vector<String> EditorExport::get_platforms() {
-	return { PLATFORM_WINDOWS, PLATFORM_LINUX, PLATFORM_MACOS };
+	return { PLATFORM_WINDOWS, PLATFORM_LINUX, PLATFORM_MACOS, PLATFORM_WEB };
+}
+
+const char *EditorExport::get_web_platform() {
+	return PLATFORM_WEB;
+}
+
+String EditorExport::get_web_page_url(const String &p_project_dir, const ExportPreset &p_preset) {
+	if (p_preset.platform != PLATFORM_WEB || !p_preset.embed_pck || str_strip(p_preset.export_path).empty()) {
+		return String();
+	}
+	fs::path target = fs::u8path(str_strip(p_preset.export_path));
+	if (target.is_relative()) {
+		target = fs::u8path(p_project_dir) / target;
+	}
+	std::error_code ec;
+	target = fs::absolute(target, ec).lexically_normal();
+	if (target.extension() != ".html" && target.extension() != ".htm") {
+		target += ".html";
+	}
+	if (!fs::is_regular_file(target, ec)) {
+		return String();
+	}
+	// Chemin en adresse : barres obliques, caractères spéciaux encodés (« C:/Mes jeux » -> « /C:/Mes%20jeux »).
+	const String path = _generic(target);
+	String url = "file://";
+	if (path.empty() || path[0] != '/') {
+		url += '/';
+	}
+	for (unsigned char c : path) {
+		if (std::isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == ':') {
+			url += (char)c;
+		} else {
+			static const char *hex = "0123456789ABCDEF";
+			url += '%';
+			url += hex[c >> 4];
+			url += hex[c & 15];
+		}
+	}
+	return url;
 }
 
 String EditorExport::get_host_platform() {
@@ -121,6 +186,10 @@ ExportPreset EditorExport::make_preset(const String &p_platform, const String &p
 		preset.export_path = "export/windows/" + name + ".exe";
 	} else if (p_platform == PLATFORM_MACOS) {
 		preset.export_path = "export/macos/" + name + ".app";
+	} else if (p_platform == PLATFORM_WEB) {
+		// Un seul fichier par défaut : la page s'ouvre d'un double-clic, sans serveur web.
+		preset.export_path = "export/web/" + name + ".html";
+		preset.embed_pck = true;
 	} else {
 		preset.export_path = "export/linux/" + name + ".x86_64";
 	}
@@ -189,6 +258,144 @@ String EditorExport::get_template_hint(const String &p_platform) {
 	return path_join(path_join(path_join(path_get_base_dir(editor), "templates"), _platform_id(p_platform)), _template_name(p_platform));
 }
 
+// --- Modèles incorporés à l'éditeur ---
+namespace {
+struct EmbeddedTemplate {
+	String id;
+	uint64_t offset = 0;
+	uint64_t size = 0;
+};
+const uint64_t TEMPLATE_TRAILER = 8 + 32 + 4;
+
+std::vector<EmbeddedTemplate> _read_embedded_templates(const String &p_executable) {
+	std::vector<EmbeddedTemplate> list;
+	std::ifstream file(fs::u8path(p_executable), std::ios::binary);
+	if (!file) {
+		return list;
+	}
+	file.seekg(0, std::ios::end);
+	uint64_t end = (uint64_t)file.tellg();
+	// Les modèles se suivent à la fin du fichier ; on remonte de l'un à l'autre.
+	while (end > TEMPLATE_TRAILER) {
+		unsigned char trailer[TEMPLATE_TRAILER];
+		file.seekg((std::streamoff)(end - TEMPLATE_TRAILER));
+		if (!file.read((char *)trailer, TEMPLATE_TRAILER) || memcmp(trailer + 40, "MEXT", 4) != 0) {
+			break;
+		}
+		EmbeddedTemplate entry;
+		for (int i = 7; i >= 0; i--) {
+			entry.size = (entry.size << 8) | trailer[i];
+		}
+		if (entry.size == 0 || entry.size > end - TEMPLATE_TRAILER) {
+			break;
+		}
+		entry.id = String((const char *)trailer + 8, strnlen((const char *)trailer + 8, 32));
+		entry.offset = end - TEMPLATE_TRAILER - entry.size;
+		list.push_back(entry);
+		end = entry.offset;
+	}
+	return list;
+}
+} // namespace
+
+std::vector<String> EditorExport::get_embedded_templates(const String &p_executable) {
+	std::vector<String> ids;
+	for (const EmbeddedTemplate &entry : _read_embedded_templates(p_executable)) {
+		ids.push_back(entry.id);
+	}
+	return ids;
+}
+
+bool EditorExport::embed_templates(const String &p_editor, const String &p_output, const std::vector<std::pair<String, String>> &p_templates, String &r_message) {
+	std::error_code ec;
+	// On repart de l'éditeur nu : des modèles déjà incorporés ne sont pas recopiés.
+	uint64_t editor_size = (uint64_t)fs::file_size(fs::u8path(p_editor), ec);
+	if (ec) {
+		r_message = "Éditeur illisible : " + p_editor;
+		return false;
+	}
+	for (const EmbeddedTemplate &entry : _read_embedded_templates(p_editor)) {
+		editor_size = std::min(editor_size, entry.offset);
+	}
+	std::ifstream editor(fs::u8path(p_editor), std::ios::binary);
+	std::vector<char> data((size_t)editor_size);
+	if (!editor.read(data.data(), (std::streamsize)editor_size)) {
+		r_message = "Éditeur illisible : " + p_editor;
+		return false;
+	}
+	editor.close();
+	for (const auto &entry : p_templates) {
+		if (entry.first.empty() || entry.first.size() > 31) {
+			r_message = "Identifiant de système invalide : " + entry.first;
+			return false;
+		}
+		std::ifstream file(fs::u8path(entry.second), std::ios::binary);
+		const std::vector<char> content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		if (!file || content.empty()) {
+			r_message = "Modèle illisible : " + entry.second;
+			return false;
+		}
+		data.insert(data.end(), content.begin(), content.end());
+		const uint64_t size = content.size();
+		for (int i = 0; i < 8; i++) {
+			data.push_back((char)((size >> (8 * i)) & 0xff));
+		}
+		char id[32] = {};
+		memcpy(id, entry.first.c_str(), entry.first.size());
+		data.insert(data.end(), id, id + 32);
+		data.insert(data.end(), { 'M', 'E', 'X', 'T' });
+	}
+	std::ofstream out(fs::u8path(p_output), std::ios::binary | std::ios::trunc);
+	out.write(data.data(), (std::streamsize)data.size());
+	out.close();
+	if (!out) {
+		r_message = "Impossible d'écrire : " + p_output;
+		return false;
+	}
+	// Mêmes droits que l'éditeur d'origine (exécutable sous Linux et macOS).
+	fs::permissions(fs::u8path(p_output), fs::status(fs::u8path(p_editor), ec).permissions(), ec);
+	r_message = p_output + " : " + std::to_string(p_templates.size()) + " modèle(s) incorporé(s), " + std::to_string(data.size() / 1024) + " Ko";
+	return true;
+}
+
+String EditorExport::extract_embedded_template(const String &p_platform) {
+	const String editor = OS::get_singleton()->get_executable_path();
+	const String id = _platform_id(p_platform);
+	for (const EmbeddedTemplate &entry : _read_embedded_templates(editor)) {
+		if (entry.id != id) {
+			continue;
+		}
+		char *pref = SDL_GetPrefPath("Metoushela", "MEX");
+		if (!pref) {
+			return String();
+		}
+		// Un dossier par version : un modèle d'une autre version de MEX n'est jamais réutilisé.
+		const String dir = path_join(path_join(String(pref) + "modeles_incorpores", MEX_VERSION), id);
+		SDL_free(pref);
+		const String target = path_join(dir, _template_name(p_platform));
+		std::error_code ec;
+		if (fs::is_regular_file(fs::u8path(target), ec) && (uint64_t)fs::file_size(fs::u8path(target), ec) == entry.size) {
+			return target;
+		}
+		fs::create_directories(fs::u8path(dir), ec);
+		std::ifstream file(fs::u8path(editor), std::ios::binary);
+		std::vector<char> content((size_t)entry.size);
+		file.seekg((std::streamoff)entry.offset);
+		if (!file.read(content.data(), (std::streamsize)entry.size)) {
+			return String();
+		}
+		std::ofstream out(fs::u8path(target), std::ios::binary | std::ios::trunc);
+		out.write(content.data(), (std::streamsize)content.size());
+		out.close();
+		if (!out) {
+			return String();
+		}
+		fs::permissions(fs::u8path(target), fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read | fs::perms::others_exec, ec);
+		return target;
+	}
+	return String();
+}
+
 String EditorExport::find_template(const String &p_platform) {
 	std::error_code ec;
 	std::vector<String> candidates;
@@ -198,6 +405,11 @@ String EditorExport::find_template(const String &p_platform) {
 		SDL_free(pref);
 	}
 	const String editor = OS::get_singleton()->get_executable_path();
+	// Modèle incorporé à l'éditeur (éditeur distribué en un seul fichier).
+	const String embedded = extract_embedded_template(p_platform);
+	if (!embedded.empty()) {
+		candidates.push_back(embedded);
+	}
 	if (p_platform == get_host_platform() && !editor.empty()) {
 		// Même système : « mex-jeu » livré à côté de l'éditeur, sinon l'éditeur lui-même.
 		candidates.push_back(path_join(path_get_base_dir(editor), _template_name(p_platform)));
@@ -244,6 +456,10 @@ bool EditorExport::export_preset(const String &p_project_dir, const ExportPreset
 	}
 	if (macos && target.extension() != ".app") {
 		target += ".app";
+	}
+	const bool web = p_preset.platform == PLATFORM_WEB;
+	if (web && target.extension() != ".html" && target.extension() != ".htm") {
+		target += ".html";
 	}
 	const fs::path out_dir = target.parent_path();
 	if (out_dir.empty() || fs::equivalent(out_dir, project_dir, ec)) {
@@ -298,6 +514,71 @@ bool EditorExport::export_preset(const String &p_project_dir, const ExportPreset
 		}
 	}
 	std::sort(files.begin(), files.end());
+
+	if (web) {
+		// Web : une page HTML, le moteur (JavaScript et WebAssembly réunis dans « mex-jeu.js »)
+		// et l'archive du jeu. « Tout réunir dans la page » donne un seul fichier .html.
+		const String stem = _file_name(target.stem().u8string());
+		const fs::path pack_path = out_dir / fs::u8path(stem + ".pck");
+		const fs::path engine_path = out_dir / fs::u8path(stem + ".js");
+		if (PackedData::create(_generic(pack_path), files, false) != OK) {
+			r_message = "Échec de l'écriture de l'archive : " + _generic(pack_path);
+			return false;
+		}
+		String loading;
+		if (p_preset.embed_pck) {
+			Error err = OK;
+			const std::vector<uint8_t> pack = FileAccess::get_file_as_bytes(_generic(pack_path), &err);
+			String engine = FileAccess::get_file_as_string(template_path, &err);
+			if (err != OK || pack.empty() || engine.empty()) {
+				r_message = "Impossible de relire l'archive ou le modèle : " + template_path;
+				return false;
+			}
+			// Le moteur est recopié dans la page : aucune balise ne doit s'y fermer par accident.
+			engine = str_replace(str_replace(engine, "</script", "<\\/script"), "<!--", "<\\!--");
+			loading = "<script id=\"archive\" type=\"application/base64\">" + _base64(pack) + "</script>\n<script>MEX.incorporee(\"archive\");</script>\n<script>\n" + engine + "\n</script>";
+			fs::remove(pack_path, ec);
+			fs::remove(engine_path, ec);
+		} else {
+			if (FileAccess::copy(template_path, _generic(engine_path)) != OK) {
+				r_message = "Impossible de copier le moteur vers : " + _generic(engine_path);
+				return false;
+			}
+			loading = "<script>MEX.demarrer({ archive: \"" + stem + ".pck\", moteur: \"" + stem + ".js\" });</script>";
+		}
+		// Icône de l'onglet : l'icône du projet si c'est une image PNG.
+		String icon_tag = "<link rel=\"icon\" href=\"data:,\">\n"; // pas d'icône : aucune demande de favicon.ico
+		const String icon = GLOBAL_GET("application/icon").as_string();
+		if (str_begins_with(icon, "res://") && path_get_extension(icon) == "png") {
+			Error err = OK;
+			const std::vector<uint8_t> image = FileAccess::get_file_as_bytes(path_join(p_project_dir, icon.substr(6)), &err);
+			if (err == OK && !image.empty() && image.size() < 512 * 1024) {
+				icon_tag = "<link rel=\"icon\" type=\"image/png\" href=\"data:image/png;base64," + _base64(image) + "\">\n";
+			}
+		}
+		String game_name = GLOBAL_GET("application/name").as_string();
+		if (game_name.empty()) {
+			game_name = stem;
+		}
+		String page = get_web_shell();
+		page = str_replace(page, "@TITRE@", _xml(game_name));
+		page = str_replace(page, "@LARGEUR@", itos(std::max<int64_t>(1, GLOBAL_GET("display/width").as_int())));
+		page = str_replace(page, "@HAUTEUR@", itos(std::max<int64_t>(1, GLOBAL_GET("display/height").as_int())));
+		page = str_replace(page, "@ICONE@", icon_tag);
+		page = str_replace(page, "@CHARGEMENT@", loading);
+		if (FileAccess::write_string(_generic(target), page) != OK) {
+			r_message = "Impossible d'écrire : " + _generic(target);
+			return false;
+		}
+		const String size_text = itos((int64_t)files.size()) + " fichiers, " + itos((int64_t)((total_size + 1023) / 1024)) + " Ko";
+		r_message = "« " + p_preset.name + " » exporté : " + _generic(target);
+		if (p_preset.embed_pck) {
+			r_message += "\n  un seul fichier : la page contient le moteur et le jeu (" + size_text + "). Elle s'ouvre d'un double-clic.";
+		} else {
+			r_message += "\n  " + stem + ".js et " + stem + ".pck à côté de la page (" + size_text + "). À placer sur un serveur web : la page ne s'ouvre pas d'un double-clic.";
+		}
+		return true;
+	}
 
 	String exe_name = target.stem().u8string();
 	fs::path exe_path = target;

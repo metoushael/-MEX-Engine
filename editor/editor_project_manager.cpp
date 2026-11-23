@@ -7,6 +7,7 @@
 #include "core/io/config_file.h"
 #include "core/io/file_access.h"
 #include "core/string/ustring.h"
+#include "editor_project_icon.h"
 #include "editor_ui.h"
 #include "scene/resources/texture.h"
 #include "servers/display_server.h"
@@ -159,6 +160,12 @@ void EditorNode::_pm_refresh(ProjectEntry &p_project) {
 			}
 		}
 	}
+	if (p_project.icon.is_null()) {
+		// Pas d'icône : un logo propre au projet (couleur et initiale tirées de son nom),
+		// seulement à l'affichage. Les fichiers du projet ne sont pas modifiés.
+		const std::vector<uint8_t> rgba = EditorProjectIcon::generate(p_project.name, 128);
+		p_project.icon = Texture2D::create_from_rgba(128, 128, rgba.data());
+	}
 	p_project.icon_loaded = true;
 }
 
@@ -291,7 +298,14 @@ bool EditorNode::_create_project(const String &p_dir, const String &p_name, int 
 		pm_error = "Impossible de créer le dossier : " + p_dir;
 		return false;
 	}
+	// Logo du projet, comme l'icon.svg que Godot place dans chaque nouveau projet : il sert
+	// sur la page d'accueil et d'icône à la fenêtre du jeu. Remplacez le fichier par le vôtre.
+	const std::vector<uint8_t> icon = EditorProjectIcon::generate(p_name, 128);
+	const bool has_icon = EditorProjectIcon::write_png(path_join(p_dir, "icon.png"), 128, 128, icon.data());
 	String project = "; Projet MEX\n\n[application]\nname = \"" + str_c_escape(p_name) + "\"\n";
+	if (has_icon) {
+		project += "icon = \"res://icon.png\"\n";
+	}
 	String scene;
 	if (p_template == 1) {
 		project += "main_scene = \"res://principale.scn\"\n\n[rendering]\nclear_color = Color(0.13, 0.15, 0.24, 1)\n";

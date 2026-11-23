@@ -16,3 +16,6 @@ clear_color = Color(0.2, 0.3, 0.5, 1)
 translations = ["res://textes.csv"]
 locale = "fr"
 fallback = "en"
+
+[autoload]
+Compteur = "res://compteur.mx"

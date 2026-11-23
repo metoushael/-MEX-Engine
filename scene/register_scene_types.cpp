@@ -10,6 +10,7 @@
 #include "scene/2d/cpu_particles_2d.h"
 #include "scene/2d/light_2d.h"
 #include "scene/2d/sprite_2d.h"
+#include "scene/2d/touch_screen_button.h"
 #include "scene/2d/tile_map.h"
 #include "scene/3d/collision_shape_3d.h"
 #include "scene/3d/node_3d.h"
@@ -105,6 +106,8 @@ void register_scene_types() {
 	GDREGISTER_CLASS(Node2D);
 	GDREGISTER_CLASS(Marker2D);
 	GDREGISTER_CLASS(Sprite2D);
+	GDREGISTER_CLASS(TouchScreenButton);
+	GDREGISTER_CLASS(VirtualJoystick);
 	GDREGISTER_CLASS(AnimatedSprite2D);
 	GDREGISTER_CLASS(CPUParticles2D);
 	GDREGISTER_CLASS(CanvasModulate);

@@ -17,6 +17,7 @@
 #include "servers/display_server.h"
 
 #define MEX_EDITOR_ICONS_DATA
+#include "editor_agent.h"
 #include "editor_ui.h"
 
 #include "imgui.h"
@@ -45,6 +46,7 @@ static void _redraw_recursive(Node *p_node) {
 // Initialisation
 // ---------------------------------------------------------------------------
 EditorNode::EditorNode() {
+	agent = std::make_unique<EditorAgent>(this);
 }
 
 EditorNode::~EditorNode() {
@@ -62,6 +64,7 @@ void EditorNode::_setup_imgui() {
 	// Préférences (thème, échelle...) et disposition des panneaux : dans le dossier de
 	// préférences de l'utilisateur.
 	_load_prefs();
+	agent->load_settings();
 	if (!prefs_dir.empty()) {
 		ini_path = prefs_dir + "editor_layout.ini";
 		io.IniFilename = ini_path.c_str();
@@ -358,6 +361,15 @@ void EditorNode::_run_test_commands(int p_frame, bool p_after_render) {
 		if (p_after_render) {
 			continue;
 		}
+		if (command.name == "agent" && !args.empty()) {
+			// Envoie une demande à MEX Agent : « <image> agent <texte de la demande> ».
+			String text;
+			for (const String &word : args) {
+				text += (text.empty() ? "" : " ") + word;
+			}
+			agent->submit(text);
+			continue;
+		}
 		if (command.name == "resize" && args.size() >= 2) {
 			SDL_SetWindowSize(DisplayServer::get_singleton()->get_window(), atoi(args[0].c_str()), atoi(args[1].c_str()));
 			continue;
@@ -574,6 +586,7 @@ void EditorNode::_draw_ui() {
 	_draw_filesystem_dock();
 	_draw_inspector_dock();
 	_draw_console_dock();
+	agent->draw();
 	_draw_monitor_dock();
 	_draw_animation_dock();
 	_draw_script_dock();
@@ -595,6 +608,7 @@ void EditorNode::_build_default_layout(unsigned int p_dockspace_id) {
 	ImGui::DockBuilderDockWindow(ICON_DOCK_SCENE "  Scène###SceneDock", left);
 	ImGui::DockBuilderDockWindow(ICON_DOCK_FILES "  Fichiers###FilesDock", left_bottom);
 	ImGui::DockBuilderDockWindow(ICON_DOCK_INSPECTOR "  Inspecteur###Inspector", right);
+	ImGui::DockBuilderDockWindow(ICON_SPARKLES "  MEX Agent###Agent", right);
 	// Le dernier onglet ancré est celui affiché au départ : la sortie.
 	ImGui::DockBuilderDockWindow(ICON_DOCK_ANIMATION "  Animation###Animation", bottom);
 	ImGui::DockBuilderDockWindow(ICON_SIGNAL "  Moniteur###Monitor", bottom);
@@ -761,6 +775,17 @@ void EditorNode::_draw_menus() {
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Affichage")) {
+		{
+			bool agent_open = agent->is_open();
+			if (ImGui::MenuItem(ICON_SPARKLES "  MEX Agent", nullptr, &agent_open)) {
+				agent->set_open(agent_open);
+				if (agent_open) {
+					agent->focus();
+				}
+				agent->save_settings();
+			}
+			ImGui::Separator();
+		}
 		ImGui::MenuItem(ICON_GRID "  Grille", nullptr, &show_grid);
 		ImGui::MenuItem(ICON_MAGNET "  Aimanter à la grille", nullptr, &snap_enabled);
 		if (ImGui::MenuItem(ICON_NODE_SHAPE "  Formes de collision", nullptr, &show_collision_shapes)) {
@@ -1435,11 +1460,16 @@ void EditorNode::_play(const String &p_scene) {
 	if (game.is_running()) {
 		_stop();
 	}
-	if (script_dirty) {
-		_save_script();
+	if (pref_save_on_run) {
+		if (script_dirty) {
+			_save_script();
+		}
+		if (scene_root && scene_modified && !scene_path.empty()) {
+			_save_scene(scene_path);
+		}
 	}
-	if (scene_root && scene_modified && !scene_path.empty()) {
-		_save_scene(scene_path);
+	if (pref_clear_output_on_run) {
+		console_lines.clear();
 	}
 	const Size2 size((real_t)GLOBAL_GET("display/width").as_int(), (real_t)GLOBAL_GET("display/height").as_int());
 	game_size = size;
@@ -1559,12 +1589,26 @@ void EditorNode::_forward_game_event(const SDL_Event &p_event) {
 			break;
 		case SDL_MOUSEBUTTONUP:
 			break;
+		case SDL_FINGERDOWN:
+		case SDL_FINGERMOTION:
+		case SDL_FINGERUP:
+			break; // écran tactile : les doigts vont au jeu (TouchScreenButton, VirtualJoystick)
 		default:
 			return;
 	}
 	Ref<InputEvent> ev = DisplayServer::translate_event(p_event);
 	if (ev.is_null()) {
 		return;
+	}
+	// Doigts : mêmes conversions que la souris, de la fenêtre de l'éditeur vers l'image du jeu.
+	if (game_image_size.x > 0 && game_image_size.y > 0) {
+		const Vector2 ratio(game_size.x / game_image_size.x, game_size.y / game_image_size.y);
+		if (InputEventScreenTouch *touch = Object::cast_to<InputEventScreenTouch>(ev.ptr())) {
+			touch->set_position((touch->get_position() - game_image_pos) * ratio);
+		} else if (InputEventScreenDrag *drag = Object::cast_to<InputEventScreenDrag>(ev.ptr())) {
+			drag->set_position((drag->get_position() - game_image_pos) * ratio);
+			drag->set_relative(drag->get_relative() * ratio);
+		}
 	}
 	if (InputEventMouse *mouse = Object::cast_to<InputEventMouse>(ev.ptr())) {
 		if (game_image_size.x <= 0 || game_image_size.y <= 0) {

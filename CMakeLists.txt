@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 # Le nom du projet est en minuscules exprès : project(MEX) créerait une variable MEX_VERSION
 # qui masquerait l'option du même nom ci-dessous dès la deuxième configuration.
-project(mex VERSION 0.9.0 LANGUAGES C CXX)
+project(mex VERSION 0.10.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,7 +25,14 @@ if("${MEX_VERSION}" STREQUAL "")
 endif()
 
 # --- SDL2 -------------------------------------------------------------------
-if(MEX_VENDORED_SDL)
+if(EMSCRIPTEN)
+	# Export web : seul l'exécutable de jeu est compilé (WebAssembly), avec la SDL2 fournie
+	# par Emscripten. Voir « Exporter pour le web » dans le README.
+	set(MEX_BUILD_EDITOR OFF CACHE BOOL "" FORCE)
+	set(MEX_SDL2_LIBS "")
+	add_compile_options(-sUSE_SDL=2)
+	add_link_options(-sUSE_SDL=2)
+elseif(MEX_VENDORED_SDL)
 	# SDL2 est compilée avec le moteur et liée statiquement. Sous Linux, les
 	# en-têtes de X11, Wayland, ALSA, PulseAudio... doivent être installés
 	# (le paquet libsdl2-dev les apporte tous) ; ces bibliothèques restent
@@ -87,10 +94,39 @@ if(MEX_SANITIZE AND NOT MSVC)
 	target_link_options(mex_engine PUBLIC -fsanitize=address,undefined)
 endif()
 
+# --- Licences des composants ----------------------------------------------------
+# Leur texte est incorporé à chaque exécutable (éditeur et jeux exportés) : un programme
+# distribué en un seul fichier garde ainsi les mentions exigées (option --licences).
+set(MEX_LICENCE_LIST
+	"SDL2|zlib|thirdparty/sdl2/LICENSE.txt"
+	"Godot Engine (parties adaptées)|MIT|thirdparty/godot/LICENSE.txt"
+	"stb (image, truetype, vorbis)|MIT ou domaine public|thirdparty/stb/LICENSE.txt"
+	"dr_mp3 (dr_libs)|MIT-0 ou domaine public|thirdparty/dr_libs/LICENSE"
+	"Police Roboto|Apache 2.0|thirdparty/fonts/LICENSE.txt"
+	"Dear ImGui (éditeur)|MIT|thirdparty/imgui/LICENSE.txt"
+	"Icônes Lucide (éditeur)|ISC|thirdparty/lucide/LICENSE.txt"
+)
+set(MEX_LICENCES_CPP "// Produit par CMake depuis thirdparty/*/LICENSE* : ne pas modifier.\n#include \"main/licences.h\"\n")
+set(MEX_LICENCE_ROWS "")
+set(MEX_LICENCE_INDEX 0)
+foreach(licence_entry ${MEX_LICENCE_LIST})
+	string(REPLACE "|" ";" licence_parts "${licence_entry}")
+	list(GET licence_parts 0 licence_name)
+	list(GET licence_parts 1 licence_kind)
+	list(GET licence_parts 2 licence_file)
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/${licence_file}" licence_text)
+	string(APPEND MEX_LICENCES_CPP "static const char MEX_LICENCE_TEXT_${MEX_LICENCE_INDEX}[] = R\"MEXLICENCE(${licence_text})MEXLICENCE\";\n")
+	string(APPEND MEX_LICENCE_ROWS "\t{ \"${licence_name}\", \"${licence_kind}\", MEX_LICENCE_TEXT_${MEX_LICENCE_INDEX} },\n")
+	math(EXPR MEX_LICENCE_INDEX "${MEX_LICENCE_INDEX} + 1")
+endforeach()
+string(APPEND MEX_LICENCES_CPP "const int MEX_LICENCE_COUNT = ${MEX_LICENCE_INDEX};\nconst MexLicence MEX_LICENCES[] = {\n${MEX_LICENCE_ROWS}\t{ nullptr, nullptr, nullptr },\n};\n")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/licences.gen.cpp" CONTENT "${MEX_LICENCES_CPP}")
+
 # --- Exécutable ---------------------------------------------------------------
 set(MEX_MAIN_SOURCES
 	main/main.cpp
 	main/game_runner.cpp
+	${CMAKE_CURRENT_BINARY_DIR}/licences.gen.cpp
 )
 
 if(MEX_BUILD_EDITOR)
@@ -111,6 +147,24 @@ if(MEX_BUILD_EDITOR)
 		target_include_directories(mex_imgui PUBLIC ${SDL2_INCLUDE_DIRS})
 	endif()
 	list(APPEND MEX_MAIN_SOURCES ${MEX_EDITOR_SOURCES})
+
+	# Compétences de MEX Agent : chaque fiche editor/agent/competences/*.md est incorporée à
+	# l'éditeur (un seul exécutable, rien à installer à côté).
+	file(GLOB MEX_AGENT_SKILL_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/editor/agent/competences/*.md")
+	list(SORT MEX_AGENT_SKILL_FILES)
+	set(MEX_AGENT_SKILLS_CPP "// Produit par CMake depuis editor/agent/competences : ne pas modifier.\n")
+	set(MEX_AGENT_SKILL_NAMES "")
+	set(MEX_AGENT_SKILL_INDEX 0)
+	foreach(skill_file ${MEX_AGENT_SKILL_FILES})
+		file(READ "${skill_file}" skill_text)
+		set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${skill_file}")
+		string(APPEND MEX_AGENT_SKILLS_CPP "static const char MEX_AGENT_SKILL_${MEX_AGENT_SKILL_INDEX}[] = R\"MEXFICHE(${skill_text})MEXFICHE\";\n")
+		string(APPEND MEX_AGENT_SKILL_NAMES "\tMEX_AGENT_SKILL_${MEX_AGENT_SKILL_INDEX},\n")
+		math(EXPR MEX_AGENT_SKILL_INDEX "${MEX_AGENT_SKILL_INDEX} + 1")
+	endforeach()
+	string(APPEND MEX_AGENT_SKILLS_CPP "extern const int MEX_AGENT_SKILL_COUNT;\nextern const char *const MEX_AGENT_SKILLS[];\nconst int MEX_AGENT_SKILL_COUNT = ${MEX_AGENT_SKILL_INDEX};\nconst char *const MEX_AGENT_SKILLS[] = {\n${MEX_AGENT_SKILL_NAMES}\tnullptr,\n};\n")
+	file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/agent_competences.gen.cpp" CONTENT "${MEX_AGENT_SKILLS_CPP}")
+	list(APPEND MEX_MAIN_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/agent_competences.gen.cpp")
 endif()
 
 if(WIN32)
@@ -170,14 +224,47 @@ endfunction()
 add_executable(mex ${MEX_MAIN_SOURCES})
 mex_setup_executable(mex)
 if(MEX_BUILD_EDITOR)
-	target_link_libraries(mex PRIVATE mex_imgui)
+	# MEX Agent attend la réponse du service dans un fil d'exécution secondaire.
+	find_package(Threads REQUIRED)
+	target_link_libraries(mex PRIVATE mex_imgui Threads::Threads)
 	target_compile_definitions(mex PRIVATE TOOLS_ENABLED)
+endif()
+
+if(EMSCRIPTEN)
+	# Un seul fichier « mex-jeu.js » (le module WebAssembly y est inclus) : c'est le modèle
+	# d'export web, copié par l'éditeur à côté de la page et de l'archive du jeu.
+	set_target_properties(mex PROPERTIES OUTPUT_NAME "mex-jeu" SUFFIX ".js")
+	target_link_options(mex PRIVATE
+		-sSINGLE_FILE=1
+		-sALLOW_MEMORY_GROWTH=1
+		-sINITIAL_MEMORY=67108864
+		-sSTACK_SIZE=4194304
+		-sFORCE_FILESYSTEM=1
+		-sENVIRONMENT=web
+		-sEXPORTED_RUNTIME_METHODS=FS
+	)
 endif()
 
 # Exécutable de jeu sans éditeur : « Exporter le jeu » le copie à côté de l'archive .pck.
 if(MEX_BUILD_EDITOR AND MEX_BUILD_TEMPLATE)
-	add_executable(mex-jeu main/main.cpp main/game_runner.cpp)
+	add_executable(mex-jeu main/main.cpp main/game_runner.cpp ${CMAKE_CURRENT_BINARY_DIR}/licences.gen.cpp)
 	mex_setup_executable(mex-jeu)
+endif()
+
+# Version console de l'éditeur sous Windows, comme godot.console.exe : un petit lanceur qui
+# démarre mex.exe dans le terminal et attend sa fin.
+if(WIN32 AND MEX_BUILD_EDITOR)
+	add_executable(mex-console platform/windows/console_wrapper_windows.cpp)
+	set_target_properties(mex-console PROPERTIES OUTPUT_NAME "mex.console" RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+	foreach(config Debug Release RelWithDebInfo MinSizeRel)
+		string(TOUPPER ${config} config_upper)
+		set_target_properties(mex-console PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${config_upper} ${CMAKE_BINARY_DIR}/bin)
+	endforeach()
+	target_link_libraries(mex-console PRIVATE shlwapi)
+	target_sources(mex-console PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/mex.rc)
+	if(MINGW)
+		target_link_options(mex-console PRIVATE -static)
+	endif()
 endif()
 
 if(WIN32 AND NOT MEX_VENDORED_SDL)

@@ -12,6 +12,7 @@
 #include "core/register_core_types.h"
 #include "core/string/ustring.h"
 #include "main/game_runner.h"
+#include "main/licences.h"
 #include "modules/mexscript/mexscript.h"
 #include "scene/main/scene_tree.h"
 #include "main/mex_logo.gen.h"
@@ -35,7 +36,11 @@
 #include <cstdlib>
 #include <sstream>
 #include <fstream>
+#include <functional>
 #include <SDL.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -61,8 +66,10 @@ struct CommandLine {
 	bool show_help = false;
 	String main_pack;
 	bool show_version = false;
+	bool show_licences = false;
 	bool hidden = false;
 	String export_preset; // --export : nom du préréglage, ou « * »
+	std::vector<String> embed_templates; // --incorporer-modeles <sortie> <système>=<fichier>...
 	int quit_after = -1; // nombre d'images avant de quitter (tests)
 	String screenshot;
 };
@@ -79,9 +86,14 @@ void print_help() {
 	print_line("  --hidden              N'affiche pas la fenêtre.");
 	print_line("  --export <préréglage> Exporte le projet (--path) avec ce préréglage d'export_presets.cfg,");
 	print_line("                        sans ouvrir de fenêtre. « * » : tous les préréglages.");
+	print_line("  --incorporer-modeles <sortie> <système>=<mex-jeu> [...]");
+	print_line("                        Écrit une copie de l'éditeur qui contient ces modèles d'export");
+	print_line("                        (windows-x86_64, linux-x86_64, macos-universal, web-wasm32) : un seul");
+	print_line("                        fichier. « editeur=<mex> » part de l'éditeur d'un autre système.");
 	print_line("  --sans-echec          Mode de compatibilité pour cette fois : barre de titre du");
 	print_line("                        système et pilote de rendu le plus sûr (sans 3D).");
 	print_line("  --version             Affiche la version.");
+	print_line("  --licences            Affiche les licences des composants utilisés.");
 	print_line("  -h, --help            Affiche cette aide.");
 	print_line("");
 	print_line("Sans option, lance la scène principale du projet du dossier courant ;");
@@ -105,8 +117,19 @@ bool parse_command_line(int p_argc, char **p_argv, CommandLine &r_cmd) {
 			r_cmd.show_help = true;
 		} else if (arg == "--version") {
 			r_cmd.show_version = true;
+		} else if (arg == "--licences") {
+			r_cmd.show_licences = true;
 		} else if (arg == "--hidden") {
 			r_cmd.hidden = true;
+		} else if (arg == "--incorporer-modeles") {
+			// Tous les arguments suivants : le fichier produit, puis les modèles.
+			while (i + 1 < p_argc) {
+				r_cmd.embed_templates.push_back(p_argv[++i]);
+			}
+			if (r_cmd.embed_templates.size() < 2) {
+				print_error("--incorporer-modeles <sortie> <système>=<fichier> [...]");
+				return false;
+			}
 		} else if (arg == "--export" || arg == "--export-release") {
 			if (!next(r_cmd.export_preset)) {
 				return false;
@@ -223,6 +246,18 @@ void run_game_test_commands(const std::vector<GameTestCommand> &p_commands, int 
 			ev->set_relative(pos - r_mouse);
 			r_mouse = pos;
 			p_runner.push_input(ev);
+		} else if (name == "finger" && command.args.size() >= 4) {
+			// finger <numéro> down|up|move <x> <y> : un vrai événement tactile de SDL.
+			const Size2 window = DisplayServer::get_singleton()->window_get_logical_size();
+			SDL_Event ev;
+			SDL_zero(ev);
+			ev.type = command.args[1] == "down" ? SDL_FINGERDOWN : (command.args[1] == "up" ? SDL_FINGERUP : SDL_FINGERMOTION);
+			ev.tfinger.touchId = 1;
+			ev.tfinger.fingerId = std::atoi(command.args[0].c_str()) + 100;
+			ev.tfinger.x = (float)std::atof(command.args[2].c_str()) / std::max(window.x, (real_t)1);
+			ev.tfinger.y = (float)std::atof(command.args[3].c_str()) / std::max(window.y, (real_t)1);
+			ev.tfinger.pressure = 1.0f;
+			SDL_PushEvent(&ev);
 		} else if (name == "down") {
 			mouse_button(true);
 		} else if (name == "up") {
@@ -259,6 +294,10 @@ int run_game(const CommandLine &p_cmd) {
 	const int width = (int)GLOBAL_GET("display/width").as_int();
 	const int height = (int)GLOBAL_GET("display/height").as_int();
 	display->set_logical_size(width, height);
+	if (GLOBAL_GET("display/always_on_top").as_bool()) {
+		SDL_SetWindowAlwaysOnTop(display->get_window(), SDL_TRUE);
+	}
+	const int max_fps = (int)GLOBAL_GET("display/max_fps").as_int();
 	// Input.set_mouse_mode() : curseur masqué ou capturé (caméra à la souris).
 	Input::get_singleton()->set_mouse_mode_handler([](int p_mode) {
 		SDL_SetRelativeMouseMode(p_mode == Input::MOUSE_MODE_CAPTURED ? SDL_TRUE : SDL_FALSE);
@@ -278,6 +317,9 @@ int run_game(const CommandLine &p_cmd) {
 	}
 
 	const bool vsync = GLOBAL_GET("display/vsync").as_bool();
+	// Écran tactile : par défaut, SDL double chaque toucher d'un événement de souris (les
+	// boutons de l'interface répondent au doigt). Le projet peut le refuser.
+	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, GLOBAL_GET("input_devices/pointing/emulate_mouse_from_touch").as_bool() ? "1" : "0");
 	uint64_t last_ticks = os->get_ticks_usec();
 	uint64_t fps_ticks = last_ticks;
 	int fps_frames = 0;
@@ -287,7 +329,9 @@ int run_game(const CommandLine &p_cmd) {
 	const std::vector<GameTestCommand> test_commands = load_game_test_script();
 	Vector2 test_mouse;
 
-	while (running) {
+	// Une image du jeu. Sur ordinateur, la boucle plus bas l'appelle sans fin ; dans un
+	// navigateur, c'est lui qui l'appelle à chaque rafraîchissement de l'écran.
+	auto frame = [&]() {
 		const uint64_t frame_start = os->get_ticks_usec();
 		run_game_test_commands(test_commands, frame_count, false, runner, test_mouse);
 		SDL_Event event;
@@ -310,7 +354,7 @@ int run_game(const CommandLine &p_cmd) {
 			}
 		}
 		if (!running) {
-			break;
+			return;
 		}
 
 		const uint64_t now = os->get_ticks_usec();
@@ -354,15 +398,53 @@ int run_game(const CommandLine &p_cmd) {
 			fps_frames = 0;
 			fps_ticks = now;
 		}
+		// Limite d'images par seconde du projet (display/max_fps) : on attend la fin du temps
+		// accordé à l'image, d'abord en dormant, puis en surveillant l'horloge.
+#ifdef __EMSCRIPTEN__
+		(void)frame_start; // le navigateur règle la cadence : aucune attente ici
+#else
+		if (max_fps > 0 && p_cmd.quit_after <= 0) {
+			const uint64_t budget = 1000000u / (uint64_t)max_fps;
+			uint64_t spent = os->get_ticks_usec() - frame_start;
+			if (spent + 2000 < budget) {
+				os->delay_msec((uint32_t)((budget - spent - 1000) / 1000));
+			}
+			while ((spent = os->get_ticks_usec() - frame_start) < budget) {
+			}
+		}
 		// Sans synchronisation verticale effective, on évite de saturer le processeur.
 		const uint64_t frame_usec = os->get_ticks_usec() - frame_start;
 		if (p_cmd.quit_after <= 0 && frame_usec < (vsync ? 2000u : 1000u)) {
 			os->delay_msec(vsync ? 8 : 1);
 		}
+#endif
+	};
+
+#ifdef __EMSCRIPTEN__
+	(void)vsync;
+	// emscripten_set_main_loop ne rend pas la main (dernier argument) : les variables de cette
+	// fonction restent donc valides pendant toute la partie.
+	static std::function<void()> web_frame;
+	web_frame = [&]() {
+		if (running) {
+			frame();
+		}
+		if (!running) {
+			runner.stop();
+			emscripten_cancel_main_loop();
+			EM_ASM({ if (Module["mexFin"]) { Module["mexFin"](); } });
+		}
+	};
+	emscripten_set_main_loop([]() { web_frame(); }, max_fps > 0 ? max_fps : 0, 1);
+	return 0;
+#else
+	while (running) {
+		frame();
 	}
 
 	runner.stop();
 	return 0;
+#endif
 }
 
 } // namespace
@@ -377,12 +459,55 @@ int Main::run(int p_argc, char **p_argv) {
 		print_help();
 		return 0;
 	}
+	if (cmd.show_licences) {
+		for (int i = 0; i < MEX_LICENCE_COUNT; i++) {
+			print_line(String("=== ") + MEX_LICENCES[i].name + " (" + MEX_LICENCES[i].kind + ") ===");
+			print_line(MEX_LICENCES[i].text);
+		}
+		return 0;
+	}
 	if (cmd.show_version) {
 		print_line(MEX_VERSION);
 		return 0;
 	}
 
 	register_core_types();
+
+	if (!cmd.embed_templates.empty()) {
+		int result = 1;
+#ifdef TOOLS_ENABLED
+		std::vector<std::pair<String, String>> templates;
+		String base_editor = OS::get_singleton()->get_executable_path();
+		for (size_t i = 1; i < cmd.embed_templates.size(); i++) {
+			const size_t eq = cmd.embed_templates[i].find('=');
+			if (eq == String::npos) {
+				print_error("--incorporer-modeles : attendu <système>=<fichier>, reçu " + cmd.embed_templates[i]);
+				templates.clear();
+				break;
+			}
+			const String id = cmd.embed_templates[i].substr(0, eq);
+			if (id == "editeur") {
+				// Éditeur d'un autre système (publication : tout est assemblé sur une seule machine).
+				base_editor = cmd.embed_templates[i].substr(eq + 1);
+				continue;
+			}
+			templates.push_back({ id, cmd.embed_templates[i].substr(eq + 1) });
+		}
+		String message;
+		if (!templates.empty()) {
+			if (EditorExport::embed_templates(base_editor, cmd.embed_templates[0], templates, message)) {
+				print_line(message);
+				result = 0;
+			} else {
+				print_error(message);
+			}
+		}
+#else
+		print_error("--incorporer-modeles : cet exécutable ne contient pas l'éditeur.");
+#endif
+		unregister_core_types();
+		return result;
+	}
 
 	// --- Projet ---
 	String project_path = cmd.project_path.empty() ? String(".") : cmd.project_path;
@@ -524,6 +649,8 @@ int Main::run(int p_argc, char **p_argv) {
 		options.height = (int)GLOBAL_GET("display/height").as_int();
 		options.resizable = GLOBAL_GET("display/resizable").as_bool();
 		options.fullscreen = GLOBAL_GET("display/fullscreen").as_bool();
+		options.borderless = GLOBAL_GET("display/borderless").as_bool();
+		options.maximized = GLOBAL_GET("display/maximized").as_bool() && !cmd.hidden;
 		options.vsync = GLOBAL_GET("display/vsync").as_bool();
 		options.scale_with_screen = true; // la fenêtre garde la même taille apparente sur un écran dense
 		// Limite en dessous de laquelle le joueur ne peut pas réduire la fenêtre (jamais plus

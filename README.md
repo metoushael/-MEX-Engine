@@ -19,21 +19,33 @@ animation, interface de jeu à ancres et conteneurs, export de jeux autonomes.
 
 ## Télécharger
 
-Les versions compilées pour Windows, Linux et macOS sont publiées dans la page
-**Releases** du dépôt GitHub (voir [Publier une version](#publier-une-version-avec-github)).
-Chaque archive contient l'éditeur (`mex`), l'exécutable de jeu sans éditeur (`mex-jeu`),
-les projets d'exemple et cette documentation. Aucune bibliothèque n'est à installer.
+Les versions compilées sont publiées dans la page **Releases** du dépôt GitHub (voir
+[Publier une version](#publier-une-version-avec-github)). Sous Windows et sous Linux, MEX
+tient en **un seul fichier** : l'éditeur, avec les modèles d'export de tous les systèmes à
+l'intérieur. Rien à décompresser, aucune bibliothèque à installer.
 
-| Système | Archive | Après la décompression |
+| Système | Fichier | Pour lancer |
 | --- | --- | --- |
-| Windows 10 ou 11, 64 bits | `mex-<version>-windows-x86_64.zip` | Double-cliquez sur `mex.exe` |
-| Linux x86_64, glibc 2.39 ou plus récente (Ubuntu 24.04, Debian 13, Fedora 40...) | `mex-<version>-linux-x86_64.tar.gz` | `./mex` |
+| Windows 10 ou 11, 64 bits | `mex-<version>-windows-x86_64.exe` | Double-cliquez dessus |
+| Linux x86_64, glibc 2.39 ou plus récente (Ubuntu 24.04, Debian 13, Fedora 40...) | `mex-<version>-linux-x86_64` | `chmod +x mex-*-linux-x86_64` puis `./mex-*-linux-x86_64` |
 | macOS 11 ou plus récent, Intel et Apple Silicon | `mex-<version>-macos-universal.tar.gz` | `xattr -dr com.apple.quarantine .` puis `./mex` |
 
-Sous macOS, la commande `xattr` lève le blocage appliqué aux programmes téléchargés qui ne
-sont pas signés par un développeur identifié. Sous Windows, SmartScreen peut afficher
-« Windows a protégé votre ordinateur » : cliquez sur *Informations complémentaires* puis
-*Exécuter quand même*.
+Fichiers facultatifs :
+
+- `mex-<version>-windows-x86_64.console.exe` : la [version console](#version-console-windows)
+  pour Windows, à placer à côté du `.exe` ;
+- `mex-<version>-exemples.zip` : les deux [projets d'exemple](#projets-dexemple).
+
+Sous macOS, un exécutable signé ne peut rien recevoir à sa suite : l'archive contient donc
+l'éditeur `mex`, le modèle `mex-jeu` et un dossier `templates/` pour les autres systèmes. La
+commande `xattr` lève le blocage appliqué aux programmes téléchargés qui ne sont pas signés
+par un développeur identifié. Sous Windows, SmartScreen peut afficher « Windows a protégé
+votre ordinateur » : cliquez sur *Informations complémentaires* puis *Exécuter quand même*.
+
+Les préférences, la liste des projets et les modèles d'export extraits de l'éditeur sont
+rangés dans le dossier de données de l'utilisateur (`%APPDATA%\Metoushela\MEX` sous
+Windows) : le fichier téléchargé peut être déplacé ou remplacé par une version plus récente
+sans rien perdre.
 
 ## Compiler
 
@@ -101,7 +113,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.9.0). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.10.0). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -132,8 +144,28 @@ mex --path projects/demo3d             # lance la démonstration 3D
 | `--screenshot <f.bmp>` | Enregistre la dernière image |
 | `--hidden` | Fenêtre masquée |
 | `--sans-echec` | Mode de compatibilité pour cette fois : barre de titre du système, pilote de rendu le plus sûr (sans 3D) |
+| `--export <préréglage>` | Exporte le projet sans ouvrir de fenêtre (voir [Exporter un jeu](#exporter-un-jeu)) |
+| `--incorporer-modeles <sortie> ...` | Écrit une copie de l'éditeur qui contient des modèles d'export (voir [Modèles d'export](#modèles-dexport)) |
+| `--licences` | Affiche les licences des composants utilisés (éditeur et jeux exportés) |
+| `--version`, `--help` | Version, aide |
 
 En jeu, F11 bascule le plein écran.
+
+### Version console (Windows)
+
+Sous Windows, `mex.exe` est une application graphique : lancée d'un double-clic, elle n'ouvre
+pas de fenêtre noire, et dans un terminal ses messages n'apparaissent pas. Comme Godot
+(`godot.console.exe`), MEX fournit donc `mex.console.exe`, un petit lanceur à placer **à côté
+de l'éditeur** : il démarre l'éditeur dans le terminal, y affiche ses messages (`print` des
+scripts, erreurs, résultat d'un export) et rend son code de retour.
+
+```bat
+mex-v0.10.0-windows-x86_64.console.exe --path mon_projet --export "*"
+mex-v0.10.0-windows-x86_64.console.exe --version
+```
+
+Le lanceur cherche l'éditeur qui porte le même nom que lui sans `.console` : renommez les
+deux fichiers ensemble (`mex.exe` et `mex.console.exe`, par exemple).
 
 | Variable d'environnement | Rôle |
 | --- | --- |
@@ -222,6 +254,12 @@ des projets au centre, les actions à droite.
 | *Modifier* (ou double-clic) | Ouvre le projet dans l'éditeur |
 | *Exécuter* | Ouvre le projet et lance aussitôt le jeu |
 | *Renommer*, *Afficher le dossier*, *Retirer de la liste* | Retirer n'efface aucun fichier |
+
+Chaque projet a son **logo** dans la liste : l'image du réglage *Icône de la fenêtre* du
+projet, sinon un logo fabriqué par MEX (un carré arrondi en dégradé avec l'initiale du nom ;
+la couleur est tirée du nom, elle ne change donc pas d'un lancement à l'autre). Un projet
+créé depuis cette page reçoit ce logo dans un fichier `icon.png`, déclaré comme icône du
+jeu : remplacez le fichier par votre image quand vous en avez une.
 
 La liste est enregistrée dans `projects.cfg`, à côté des préférences de l'éditeur. Depuis
 l'éditeur, *Projet > Retourner à la liste des projets* y revient sans relancer le programme.
@@ -336,7 +374,12 @@ préférences ; le bouton *Actualiser* les recalcule.
 - l'**échelle de l'interface** (automatique d'après l'écran, ou de 75 % à 300 %), la taille
   du texte et l'arrondi des angles ;
 - la **barre de titre** : intégrée à l'éditeur ou celle du système ;
-- les aperçus de fichiers et la taille des miniatures.
+- les aperçus de fichiers et la taille des miniatures ;
+- **script et jeu** : la taille du texte de l'éditeur de script (celle de l'interface, ou de
+  10 à 32 px), l'enregistrement de la scène et du script avant chaque lancement du jeu
+  (activé au départ), le vidage du panneau *Sortie* à chaque lancement ;
+- **MEX Agent** : un bouton ouvre les réglages de connexion de l'assistant (voir
+  [MEX Agent](#mex-agent)).
 
 Les réglages sont enregistrés dans `editor_settings.cfg`, dans le dossier de données de
 l'utilisateur (`%APPDATA%\Metoushela\MEX` sous Windows, `~/.local/share/Metoushela/MEX`
@@ -373,6 +416,53 @@ déplacements au pas indiqué ; Ctrl pendant une rotation l'arrondit à 15°. Le
 collision, les caméras et les lumières sont dessinées en fil de fer. Un fichier `.obj` ou
 `.scn` glissé depuis le dock *Fichiers* est ajouté à la scène.
 
+## Paramètres du projet
+
+*Projet > Paramètres du projet...* règle ce qui est enregistré dans `project.mex`. Trois
+onglets : *Général*, *Chargement automatique*, *Contrôles*.
+
+| Réglage (onglet *Général*) | Clé dans `project.mex` | Rôle |
+| --- | --- | --- |
+| Nom du jeu, icône, scène principale | `application/name`, `icon`, `main_scene` | Titre et icône de la fenêtre, première scène |
+| Version, description | `application/version`, `application/description` | Renseignements libres, lisibles par `ProjectSettings.get_setting()` |
+| Largeur, hauteur | `display/width`, `display/height` | Taille de l'écran du jeu |
+| Fenêtre redimensionnable, tailles minimales | `display/resizable`, `display/min_width`, `display/min_height` | |
+| Plein écran, agrandie au démarrage, sans bordure, toujours au premier plan | `display/fullscreen`, `display/maximized`, `display/borderless`, `display/always_on_top` | État de la fenêtre au lancement |
+| Synchronisation verticale, barre de titre sombre | `display/vsync`, `display/dark_title_bar` | |
+| Images par seconde au plus | `display/max_fps` | `0` : pas de limite (la synchronisation verticale règle la cadence) |
+| Gravité et autres réglages de physique | `physics/...` | |
+| Simuler l'écran tactile avec la souris, un toucher agit aussi comme un clic | `input_devices/pointing/...` | Voir [Écran tactile](#écran-tactile) |
+
+### Chargements automatiques
+
+Un **chargement automatique** (l'*autoload* de Godot) est un script ou une scène créé avant
+la première scène du jeu et gardé d'une scène à l'autre : le bon endroit pour le score, la
+musique, une sauvegarde. Tous les scripts l'appellent par son nom.
+
+```gdscript
+# partie.mx, déclaré sous le nom « Partie »
+extends Node
+
+var score = 0
+```
+
+```gdscript
+# dans n'importe quel autre script
+Partie.score += 1
+get_tree().change_scene_to_file("res://niveau2.scn")   # Partie.score est conservé
+```
+
+L'onglet *Chargement automatique* liste les entrées, en ajoute (un nom, puis un fichier `.mx`
+ou `.scn` du projet) et en retire. Dans `project.mex` :
+
+```ini
+[autoload]
+Partie = "res://partie.mx"
+```
+
+Le nœud est ajouté sous la racine (`/root/Partie`), avant la scène. Un nom déjà pris par une
+classe ou un objet du moteur (`Input`, `Node`...) est refusé, avec un message dans la sortie.
+
 ## Projets d'exemple
 
 `projects/demo3d` est une démonstration 3D à la troisième personne :
@@ -393,7 +483,9 @@ collision, les caméras et les lumières sont dessinées en fil de fer. Un fichi
 - `menu.scn` : menu principal fait de conteneurs (`CenterContainer`, `VBoxContainer`), d'un
   champ de saisie (`LineEdit`) et de boutons ;
 - `principal.scn` : un `TileMap` avec collisions, un `CharacterBody2D` piloté par script et
-  animé par un `AnimatedSprite2D`, une `Camera2D`, un affichage du score dans un `CanvasLayer` ;
+  animé par un `AnimatedSprite2D`, une `Camera2D`, un affichage du score dans un `CanvasLayer`,
+  et des commandes tactiles (`VirtualJoystick`, `TouchScreenButton`) qui n'apparaissent que
+  sur un écran tactile ;
 - `piece.scn` : une pièce (`Area2D`) instanciée dix fois, qui tourne grâce à un `AnimationPlayer`.
 
 ![Menu](docs/menu.png)
@@ -596,6 +688,45 @@ recommencer ; dans la démo 3D, stick droit pour la caméra et X pour lancer une
 Les essais passent par une manette **virtuelle** créée par SDL (boutons, axes, branchement et
 débranchement). Aucune manette réelle n'a été essayée, et la vibration n'a pas pu être
 vérifiée : si la vôtre n'est pas reconnue, `Input.get_connected_joypads()` renvoie `[]`.
+
+## Écran tactile
+
+Sur un écran tactile, MEX reçoit chaque doigt séparément et fournit deux nœuds pour les
+commandes à l'écran. Le jeu d'exemple *Plateforme* les utilise : un stick à gauche, un
+bouton de saut à droite, visibles seulement quand l'écran est tactile.
+
+| Nœud | Rôle | Propriétés |
+| --- | --- | --- |
+| `TouchScreenButton` | Bouton à l'écran : presse une action tant qu'un doigt est dessus | `action`, `texture_normal`, `texture_pressed`, `radius` (48 : disque dessiné quand il n'y a pas de texture), `passby_press` (un doigt qui glisse dessus l'enfonce), `visibility_mode` ; signaux `pressed`, `released` |
+| `VirtualJoystick` | Stick à l'écran, propre à MEX : alimente jusqu'à quatre actions, avec une force proportionnelle à l'écart du doigt | `radius` (72), `action_left`, `action_right`, `action_up`, `action_down`, `visibility_mode` ; `get_output()` rend un `Vector2`, `is_pressed()` |
+
+`visibility_mode = 1` n'affiche le nœud que sur un appareil tactile ; `0` l'affiche toujours.
+Placez ces nœuds dans un `CanvasLayer` pour qu'ils restent fixes à l'écran. La position d'un
+`TouchScreenButton` est son coin haut gauche, celle d'un `VirtualJoystick` est son centre.
+Comme ces nœuds pressent des **actions**, le script du jeu ne change pas : `Input.get_axis`,
+`Input.is_action_pressed`, etc. répondent au doigt comme au clavier ou à la manette.
+
+En script, les événements arrivent dans `_input(event)` :
+
+| Événement | Propriétés |
+| --- | --- |
+| `InputEventScreenTouch` | `index` (numéro du doigt), `position`, `pressed`, `canceled`, `double_tap` |
+| `InputEventScreenDrag` | `index`, `position`, `relative`, `velocity`, `pressure` |
+
+`Input.is_touchscreen_available()` dit si un écran tactile est présent.
+
+Deux réglages du projet (onglet *Général*, *Écran tactile*) :
+
+- **Simuler l'écran tactile avec la souris** (`emulate_touch_from_mouse`, désactivé au départ) :
+  le clic gauche devient le doigt n° 0, pour essayer des commandes tactiles sur un
+  ordinateur ;
+- **Un toucher agit aussi comme un clic** (`emulate_mouse_from_touch`, activé au départ) : un
+  toucher vaut aussi un clic, les boutons de l'interface répondent donc au doigt.
+
+Les commandes tactiles fonctionnent dans les jeux exportés pour le web, ouverts sur un
+téléphone ou une tablette. Ce qui manque : les formes de collision et les masques de
+`TouchScreenButton` de Godot, les gestes (pincement, rotation), le clavier virtuel pour
+`LineEdit`.
 
 ## Animation
 
@@ -828,19 +959,86 @@ bruts (ne mélangez pas les deux sur une même connexion).
 - `get_tree().push_input(evenement)` envoie un `InputEventKey` ou `InputEventMouseButton`
   fabriqué par script (essais automatiques d'une interface).
 
+## MEX Agent
+
+**MEX Agent** est un assistant intégré à l'éditeur (onglet *MEX Agent*, à côté de
+l'inspecteur). Vous décrivez ce que vous voulez (« ajoute un ennemi qui fait des
+allers-retours », « pourquoi mon joueur traverse le sol ? ») ; l'assistant lit les fichiers du
+projet, écrit des scripts et des scènes, règle le projet, lance le jeu et lit sa sortie pour
+corriger ses erreurs.
+
+MEX Agent n'est pas un modèle de langage : il **se connecte au service de votre choix**, avec
+votre clé d'API. Sans clé (ou sans service local), il ne répond pas.
+
+| Fournisseur | Clé | Modèle proposé au départ |
+| --- | --- | --- |
+| Anthropic (Claude) | `ANTHROPIC_API_KEY` | `claude-sonnet-5` |
+| OpenAI (ChatGPT) | `OPENAI_API_KEY` | `gpt-5.6` |
+| OpenRouter (des centaines de modèles avec une seule clé) | `OPENROUTER_API_KEY` | `openrouter/auto` |
+| Mistral | clé à saisir | `mistral-large-latest` |
+| Google Gemini, DeepSeek, Groq | clé à saisir | à saisir |
+| Local (Ollama, `http://localhost:11434/v1`) | aucune | à saisir |
+| Autre service compatible avec l'API d'OpenAI | `MEX_AGENT_KEY` | à saisir |
+
+Bouton *Connexion* de l'onglet : choisissez le fournisseur, collez la clé (ou laissez le champ
+vide pour utiliser la variable d'environnement), saisissez le nom du modèle. *Lister*
+interroge le service et propose ses modèles. **Le nom du modèle et l'adresse du service sont
+des champs libres** : les noms proposés au départ ne sont que des suggestions, à remplacer par
+ceux que publie votre fournisseur. Les réglages sont enregistrés dans `agent.cfg`, dans le
+dossier de données de l'utilisateur : la clé y est écrite en clair, sur votre machine
+seulement ; elle n'est jamais placée dans le projet.
+
+**Compétences.** L'assistant dispose de fiches qu'il charge selon la demande :
+
+| Compétence | Contenu |
+| --- | --- |
+| `mexscript` | Le langage : ce qui est pris en charge, ce qui ne l'est pas, gestes courants |
+| `scenes` | Le format `.scn`, les nœuds, les ressources |
+| `plateforme-2d`, `vue-de-dessus` | Recettes de jeu complètes |
+| `interface` | Menus, score, boutons, conteneurs |
+| `controles` | Actions, clavier, souris, manette, écran tactile |
+| `debogage` | Lire une erreur, trouver la cause |
+| `conception` | Partir d'une idée, viser petit, avancer par étapes |
+
+Vous pouvez en ajouter : un fichier `competences/<nom>.md` dans le projet, ou dans le dossier
+de données de l'utilisateur, avec un en-tête `name:` / `description:`. Une fiche du projet
+remplace la fiche fournie du même nom.
+
+**Outils.** Lister, lire, écrire et corriger des fichiers du projet, consulter la
+documentation d'une classe du moteur, lire et ouvrir la scène en cours, régler un paramètre du
+projet, créer une image simple, lancer le jeu et lire sa sortie. Un script écrit est vérifié
+aussitôt (l'erreur de syntaxe revient à l'assistant avec son numéro de ligne) ; un chemin hors
+du projet est refusé.
+
+**Garde-fous.**
+
+- *Demander avant de modifier* (activé au départ) : chaque écriture attend votre accord
+  (*Autoriser*, *Refuser*, *Toujours autoriser* pour la conversation).
+- *Annuler les changements* remet les fichiers créés ou modifiés, et les paramètres du
+  projet, dans leur état d'avant la conversation.
+- *Arrêter* interrompt la réponse en cours. Une demande s'arrête d'elle-même après
+  40 allers-retours avec le service.
+
+À savoir : MEX Agent passe par le programme `curl` du système (fourni avec Windows 10 et 11,
+macOS et la plupart des distributions Linux). Le contenu des fichiers lus par l'assistant est
+envoyé au service choisi, et l'usage est facturé par ce service selon ses tarifs. Les réponses
+s'affichent une fois complètes (pas d'affichage mot à mot). Il n'y a pas d'envoi d'images à
+l'assistant.
+
 ## Exporter un jeu
 
 L'export suit le modèle de Godot : des **préréglages** enregistrés dans
 `export_presets.cfg` à la racine du projet (mêmes sections `[preset.N]` et
 `[preset.N.options]`), un **modèle d'export** par système (l'exécutable `mex-jeu`), et une
-archive `.pck` placée à côté de l'exécutable ou **incorporée** à celui-ci.
+archive `.pck` placée à côté de l'exécutable ou **incorporée** à celui-ci. Systèmes visés :
+Windows, Linux, macOS et le **web** (voir [Exporter pour le web](#exporter-pour-le-web)).
 
 *Projet > Exporter le jeu...* ouvre la fenêtre : la liste des préréglages à gauche, les
 réglages de celui qui est choisi à droite.
 
 | Réglage | Rôle |
 | --- | --- |
-| Système | `Windows Desktop`, `Linux` ou `macOS`, choisi à la création (*Ajouter...*) |
+| Système | `Windows Desktop`, `Linux`, `macOS` ou `Web`, choisi à la création (*Ajouter...*) |
 | Exécutable à produire | Par défaut `export/windows/Jeu.exe`, `export/linux/Jeu.x86_64`, `export/macos/Jeu.app` ; relatif au projet ou chemin complet |
 | Incorporer l'archive à l'exécutable | Cochée : un seul fichier à distribuer. Décochée : `Jeu.exe` et `Jeu.pck`, à garder ensemble |
 | Fichiers à exclure / à inclure quand même | Listes séparées par des virgules, avec `*` et `?` : `*.psd, brouillons/*` |
@@ -858,19 +1056,33 @@ par `.mexignore` ; la liste « à exclure » l'emporte sur tout, sauf sur `proje
 
 ### Modèles d'export
 
-Un modèle est l'exécutable `mex-jeu` du système visé. L'éditeur le cherche, dans l'ordre :
+Un modèle est l'exécutable `mex-jeu` du système visé (`mex-jeu.js` pour le web). L'éditeur
+le cherche, dans l'ordre :
 
 1. le chemin du réglage *Modèle personnalisé* ;
 2. `templates/<système>/mex-jeu[.exe]` à côté de l'éditeur, avec `<système>` =
-   `windows-x86_64`, `linux-x86_64` ou `macos-universal` ;
+   `windows-x86_64`, `linux-x86_64`, `macos-universal` ou `web-wasm32` ;
 3. `export_templates/<système>/` dans le dossier des préférences de MEX ;
-4. pour le système sur lequel tourne l'éditeur : `mex-jeu` à côté de l'éditeur, sinon
+4. un modèle **incorporé à l'éditeur** ;
+5. pour le système sur lequel tourne l'éditeur : `mex-jeu` à côté de l'éditeur, sinon
    l'éditeur lui-même.
 
-Chaque archive de la page *Releases* contient le dossier `templates/` de son système. Pour
-exporter vers les trois systèmes depuis un seul poste, réunissez les trois dossiers
-`templates/` à côté de l'éditeur. La fenêtre d'export indique le chemin attendu quand un
-modèle manque.
+L'éditeur des *Releases* pour Windows et pour Linux contient les modèles de tous les
+systèmes : il exporte donc vers Windows, Linux, macOS et le web sans rien installer. Au
+premier export, le modèle est extrait dans `modeles_incorpores/<version>/` (dossier de
+données de l'utilisateur) ; un modèle d'une autre version de MEX n'est jamais réutilisé. La
+fenêtre d'export indique le chemin attendu quand un modèle manque.
+
+Pour fabriquer vous-même un éditeur en un seul fichier :
+
+```sh
+mex --incorporer-modeles mex-complet linux-x86_64=mex-jeu windows-x86_64=mex-jeu.exe web-wasm32=mex-jeu.js
+mex --incorporer-modeles mex-complet.exe editeur=mex.exe windows-x86_64=mex-jeu.exe   # depuis Linux, pour Windows
+```
+
+Les modèles sont ajoutés à la suite de l'éditeur (chacun suivi de sa taille, de son
+identifiant et d'une marque) ; `editeur=` part de l'éditeur d'un autre système que celui qui
+exécute la commande.
 
 ### Ce qui est produit
 
@@ -882,6 +1094,7 @@ export/macos/Jeu.app/Contents/Info.plist
                      Contents/MacOS/Jeu
                      Contents/Resources/Jeu.pck
                      Contents/Resources/icon.icns   (icon.icns du projet, sinon celle de MEX)
+export/web/Jeu.html             tout dans la page : un seul fichier
 ```
 
 Au lancement, l'exécutable cherche ses données dans cet ordre : archive incorporée à la fin
@@ -889,6 +1102,48 @@ de l'exécutable, `<exécutable>.pck`, `data.pck`, puis `../Resources/<exécutab
 (paquet macOS). L'archive n'est ni compressée ni chiffrée. L'incorporation reprend le
 procédé de Godot : l'archive est ajoutée après l'exécutable, alignée sur 8 octets, suivie de
 sa taille et d'une marque de fin.
+
+### Exporter pour le web
+
+Le préréglage **Web** produit un jeu qui tourne dans un navigateur (Firefox, Chrome, Edge,
+Safari, sur ordinateur, téléphone ou tablette), sans rien installer chez le joueur. Le
+moteur de jeu y est compilé en WebAssembly.
+
+| Réglage *Tout réunir dans la page* | Fichiers produits | Usage |
+| --- | --- | --- |
+| Cochée (au départ) | `Jeu.html` seul : la page contient le moteur et le jeu | S'ouvre d'un double-clic ; se dépose tel quel sur un site ou sur itch.io (renommé `index.html`) |
+| Décochée | `Jeu.html`, `Jeu.js` (le moteur), `Jeu.pck` (le jeu) | Plus léger à télécharger pour un gros jeu, avec une barre de progression ; **doit** être servi par un serveur web (`http://` ou `https://`) |
+
+Le bouton *Ouvrir dans le navigateur* de la fenêtre d'export ouvre la page produite. Le
+moteur pèse environ 4,3 Mo ; en un seul fichier, le jeu est codé en base64 et pèse un tiers
+de plus que son archive.
+
+La page affiche le jeu au centre, à la taille de la fenêtre du navigateur en gardant ses
+proportions. Clavier, souris, écran tactile (événements, `TouchScreenButton`,
+`VirtualJoystick`) et son fonctionnent ; le son ne démarre qu'après une première action du
+joueur (clic ou touche), comme l'imposent les navigateurs. `get_tree().quit()` arrête le jeu
+et affiche « Le jeu est terminé ».
+
+Limites de l'export web :
+
+- **jeux 2D seulement** : le rendu 3D, les shaders 2D et les lumières 2D reposent sur
+  OpenGL 2.1, absent des navigateurs. Un jeu qui les utilise démarre, mais sans eux ;
+- pas de sockets TCP ou UDP ; pas de clavier virtuel sur téléphone pour `LineEdit` ;
+- la page est en français (« Chargement… ») et n'est pas personnalisable depuis l'éditeur ;
+- essayé dans Chromium sans écran (clavier, souris, toucher, affichage) ; le son n'a pas pu
+  être écouté, et Firefox et Safari n'ont pas été essayés.
+
+Compiler le modèle web soi-même demande [Emscripten](https://emscripten.org) (3.1.74 est la
+version essayée) :
+
+```sh
+source emsdk/emsdk_env.sh
+emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-web          # produit build-web/bin/mex-jeu.js
+```
+
+Placez `mex-jeu.js` dans `templates/web-wasm32/` à côté de l'éditeur, ou incorporez-le avec
+`--incorporer-modeles`.
 
 ### En ligne de commande
 
@@ -909,9 +1164,15 @@ Aucune fenêtre n'est ouverte ; le code de retour est 0 si tout a été exporté
 - Le paquet macOS n'est ni signé ni notarié : au premier lancement, clic droit > *Ouvrir*,
   ou la commande `xattr` de la section [Télécharger](#télécharger). L'incorporation est
   désactivée pour macOS (elle invaliderait la signature de l'exécutable).
-- Par rapport à Godot, il manque : l'export Web, Android et iOS, le chiffrement de
-  l'archive, la signature de code, le changement de l'icône et des informations de version
-  du `.exe`, les archives de correctifs et le choix des ressources une à une.
+- Par rapport à Godot, il manque : l'export **Android** et iOS, le rendu 3D dans l'export
+  web, le chiffrement de l'archive, la signature de code, le changement de l'icône et des
+  informations de version du `.exe`, les archives de correctifs et le choix des ressources
+  une à une.
+- **Android n'est pas pris en charge.** Un export Android demande le SDK et le NDK d'Android,
+  un projet Gradle, la signature du paquet, et un rendu OpenGL ES que le moteur n'a pas
+  encore pour la 3D ; rien de cela n'a pu être construit ni essayé. En attendant, un jeu 2D
+  exporté pour le web se joue dans le navigateur d'un téléphone Android, commandes tactiles
+  comprises.
 
 ## La 3D
 
@@ -1045,8 +1306,14 @@ Pris en charge : `var`, `const`, `signal`, `enum`, `func`, `static func`, `@expo
 `@onready`, `if / elif / else`, `while`, `for ... in`, `match`, opérateur ternaire, lambdas
 sur une ligne, `$Chemin/Du/Noeud`, annotations de type, paramètres par défaut.
 
-Pas encore pris en charge : `await`, `extends "chemin"`, accesseurs `set / get`, `%Nom`,
-opérateur `**`.
+Pas encore pris en charge : `await`, `extends "chemin"`, classes internes (`class Nom:`),
+accesseurs `set / get`, `%Nom`, lambdas sur plusieurs lignes, opérateur `**` (`pow(a, b)`).
+
+`JSON.stringify(valeur, "\t")` donne le texte JSON d'une valeur (dictionnaire, tableau,
+nombre, texte...) ; `JSON.parse_string(texte)` rend la valeur, ou `null` et une erreur dans la
+sortie si le texte est invalide. Un script déclaré en
+[chargement automatique](#chargements-automatiques) s'appelle par son nom depuis tous les
+autres.
 
 Fonctions appelées par le moteur : `_init`, `_ready`, `_process(delta)`,
 `_physics_process(delta)`, `_input(event)`, `_unhandled_input(event)`, `_draw`.
@@ -1056,6 +1323,7 @@ Fonctions appelées par le moteur : `_init`, `_ready`, `_process(delta)`,
 | Famille | Classes |
 | --- | --- |
 | Base | `Node`, `Timer`, `CanvasLayer`, `AudioStreamPlayer`, `AnimationPlayer` |
+| Écran tactile | `TouchScreenButton`, `VirtualJoystick` |
 | Effets 2D | `CPUParticles2D`, `PointLight2D`, `LightOccluder2D`, `CanvasModulate`, `AudioStreamPlayer2D` |
 | Son 3D | `AudioStreamPlayer3D`, `AudioListener3D` |
 | Animation 3D | `Skeleton3D` |
@@ -1068,7 +1336,7 @@ Fonctions appelées par le moteur : `_init`, `_ready`, `_process(delta)`,
 | Interface | `Control`, `Label`, `Button`, `CheckBox`, `TextureButton`, `OptionButton`, `LineEdit`, `HSlider`, `VSlider`, `ItemList`, `Panel`, `ColorRect`, `TextureRect`, `NinePatchRect`, `ProgressBar`, `HSeparator`, `VSeparator` |
 | Conteneurs | `VBoxContainer`, `HBoxContainer`, `GridContainer`, `MarginContainer`, `CenterContainer`, `ScrollContainer`, `TabContainer` |
 | Ressources et outils | `Theme`, `Shader`, `ShaderMaterial`, `CanvasItemMaterial`, `Tween`, `AStar2D`, `AStarGrid2D`, `StreamPeerTCP`, `TCPServer`, `PacketPeerUDP`, effets audio `AudioEffect...` |
-| Singletons | `Input`, `InputMap`, `Engine`, `OS`, `Time`, `ProjectSettings`, `AudioServer`, `TranslationServer`, `Performance` |
+| Singletons | `Input`, `InputMap`, `Engine`, `OS`, `Time`, `ProjectSettings`, `AudioServer`, `TranslationServer`, `Performance`, `JSON` |
 
 Formats de fichiers : images PNG, JPEG, BMP, TGA et GIF, sons WAV, Ogg Vorbis et MP3, polices TTF,
 maillages OBJ, shaders `.shader`, traductions `.csv`, scènes `.scn`, ressources `.res`, scripts `.mx`,
@@ -1133,9 +1401,17 @@ français.
   toutes les cartes graphiques. Si l'image est mauvaise sur une machine, le mode de
   compatibilité (voir *Pilote de rendu et mode de compatibilité*) rend un affichage sûr, et
   `diagnostic.txt` dit quel pilote est en cause.
-- Export : Windows, Linux et macOS seulement ; pas d'export Web ni Android.
-- Export : pas d'icône d'application, de paquet `.app` pour macOS ni de compression de l'archive ;
-  les exécutables ne sont pas signés.
+- Export : Windows, Linux, macOS et web ; **pas d'export Android ni iOS**. L'export web est
+  limité aux jeux 2D sans shaders ni lumières (voir [Exporter pour le web](#exporter-pour-le-web)).
+- Export : pas d'icône d'application dans le `.exe` ni de compression de l'archive ; les
+  exécutables ne sont pas signés.
+- Paramètres du projet : pas de mode d'étirement de l'image (`stretch`), de calques de
+  physique nommés ni de réglages de rendu avancés de Godot.
+- Écran tactile et MEX Agent : voir la fin des sections [Écran tactile](#écran-tactile) et
+  [MEX Agent](#mex-agent). Les commandes tactiles ont été essayées avec des touchers simulés
+  (SDL et Chromium), pas sur un vrai écran tactile ; MEX Agent a été essayé avec un faux
+  service local qui imite les API d'Anthropic et d'OpenAI, pas avec les services réels.
+- Données du joueur : pas de dossier `user://` ni de sauvegarde gérée par le moteur.
 - Audio : pas de table de mixage dans l'éditeur, pas d'enregistrement, pas de son 3D ; un
   fichier Ogg ou MP3 est décodé en entier au chargement (pas de lecture en flux).
 - Aperçus : pas d'écoute des sons (forme d'onde seulement) ; au plus 96 miniatures 3D ou de
@@ -1152,8 +1428,8 @@ français.
 ## Publier une version avec GitHub
 
 Le fichier `.github/workflows/build.yml` fait compiler le moteur par GitHub Actions pour
-Linux, Windows et macOS, puis publie les archives dans la page **Releases** du dépôt. Il
-n'y a rien à installer sur votre machine à part `git`.
+Linux, Windows, macOS et le web, puis publie les fichiers dans la page **Releases** du
+dépôt. Il n'y a rien à installer sur votre machine à part `git`.
 
 **Première mise en ligne.** Créez un dépôt vide sur <https://github.com/new> (sans README
 ni licence), puis, dans le dossier du moteur :
@@ -1161,7 +1437,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.9.0"
+git commit -m "MEX 0.10.0"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -1170,8 +1446,8 @@ Ce qui est publié, selon ce qui déclenche le travail :
 
 | Déclencheur | Publication |
 | --- | --- |
-| Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Archives `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.9.0**. Archives `mex-v0.9.0-...` |
+| Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Fichiers `mex-continu-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.10.0**. Fichiers `mex-v0.10.0-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -1181,23 +1457,26 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.9.0
-  git push origin v0.9.0
+  git tag v0.10.0
+  git push origin v0.10.0
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.9.0` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.10.0` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.9.0-windows-x86_64.zip`
-- `mex-v0.9.0-linux-x86_64.tar.gz`
-- `mex-v0.9.0-macos-universal.tar.gz`
-- `SHA256SUMS.txt`, les empreintes des archives.
+- `mex-v0.10.0-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
+- `mex-v0.10.0-windows-x86_64.console.exe` : sa version console ;
+- `mex-v0.10.0-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
+- `mex-v0.10.0-macos-universal.tar.gz` : l'éditeur pour macOS et les modèles d'export ;
+- `mex-v0.10.0-exemples.zip` : les projets d'exemple ;
+- `SHA256SUMS.txt`, les empreintes de ces fichiers.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.9.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
-archives sont tout de même publiées et la note de version le signale.
+`v0.10.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+fichiers sont tout de même publiés et la note de version le signale ; seul l'éditeur Linux
+est indispensable, car c'est lui qui assemble les fichiers.
 
 **Si rien n'apparaît dans Releases :**
 
@@ -1208,8 +1487,8 @@ archives sont tout de même publiées et la note de version le signale.
   **Read and write permissions**, enregistrez, puis relancez l'exécution (*Re-run jobs*).
 - « Dernière compilation » est une préversion : GitHub ne la présente pas comme *Latest*
   dans l'encadré de la page d'accueil du dépôt ; elle figure dans la page *Releases*.
-- Les archives de chaque exécution restent aussi téléchargeables au bas de sa page, dans
-  *Artifacts*.
+- Les fichiers de chaque exécution restent aussi téléchargeables au bas de sa page, dans
+  *Artifacts* (`mex-<libellé>`).
 
 Ce que fait chaque compilation :
 
@@ -1218,6 +1497,13 @@ Ce que fait chaque compilation :
 | Linux | `ubuntu-24.04` | GCC | SDL2 et bibliothèques du compilateur liées statiquement |
 | Windows | `windows-latest` | GCC de MSYS2 (UCRT64) | Un seul `.exe`, aucune DLL à fournir |
 | macOS | `macos-latest` | Clang d'Apple | Une compilation par architecture, réunies avec `lipo` ; signature locale (`codesign -`) |
+| Web | `ubuntu-24.04` | Emscripten 3.1.74 | Le moteur de jeu seul, en WebAssembly : `mex-jeu.js` |
+
+La tâche **Assemblage** réunit ensuite ces exécutables (`tools/assembler_publication.sh`) :
+l'éditeur de Windows et celui de Linux reçoivent les modèles d'export de tous les systèmes.
+Elle vérifie le résultat (`tools/essai_fichier_unique.sh`) : l'éditeur Linux en un seul
+fichier, copié seul dans un dossier vide, exporte le jeu d'exemple pour Linux, le web et
+Windows, puis le jeu Linux exporté est lancé. Les deux scripts se lancent aussi à la main.
 
 Après la compilation, les deux projets d'exemple tournent 120 images sans écran sur chaque
 système ; la moindre ligne `ERREUR:` fait échouer le travail. Sans écran il n'y a pas
@@ -1235,11 +1521,22 @@ SDL_AUDIODRIVER=dummy xvfb-run -a mex-jeu --path tests/essais --quit-after 60
 ```
 
 Chaque vérification affiche `OK` ou `ECHEC`, la dernière ligne donne le bilan
-(`BILAN  122 réussis, 0 échecs`). Avec `MEX_VIRTUAL_JOYPAD=1`, SDL crée une manette
-virtuelle et un essai de plus vérifie le trajet complet, de SDL jusqu'au script (bilan : 123) ;
+(`BILAN  127 réussis, 0 échecs`). Avec `MEX_VIRTUAL_JOYPAD=1`, SDL crée une manette
+virtuelle et un essai de plus vérifie le trajet complet, de SDL jusqu'au script (bilan : 128) ;
 `Input.virtual_joy_button(bouton, appuye)`, `Input.virtual_joy_axis(axe, valeur)` et
 `Input.virtual_joy_disconnect()` la pilotent. La ligne d'erreur « Shader 2D ... 'inconnu' undeclared » est
-attendue : un essai vérifie qu'un shader faux est bien signalé.
+attendue : un essai vérifie qu'un shader faux est bien signalé (de même pour un texte JSON
+invalide). Les essais couvrent aussi l'écran tactile (boutons, stick, deux doigts), `JSON`
+et les chargements automatiques.
+
+`tests/agent/faux_service.py` est un faux service de modèles pour essayer MEX Agent sans clé
+ni connexion : il imite les API d'Anthropic et d'OpenAI, vérifie la forme des demandes
+reçues et fait dérouler à l'assistant un scénario qui emploie chacun de ses outils.
+
+```sh
+python3 tests/agent/faux_service.py 8765 journal.txt &
+MEX_AGENT_PROVIDER=anthropic MEX_AGENT_URL=http://127.0.0.1:8765/v1 ANTHROPIC_API_KEY=cle-de-test mex -e --path copie_du_projet
+```
 
 ![Scène des essais : interface, shader, particules, lumière et ombre](docs/essais.png)
 
@@ -1326,6 +1623,11 @@ Depuis les sources, ces deux fichiers sont `branding/app/mex-icone-256.png` et
 `platform/linux/mex.desktop`.
 
 ## Licences des bibliothèques tierces
+
+Le texte complet de ces licences est incorporé à chaque exécutable, puisque l'éditeur et les
+jeux exportés peuvent être distribués en un seul fichier : *Aide > À propos de MEX >
+Composants et licences* dans l'éditeur, ou `mex --licences` (et `Jeu --licences` pour un jeu
+exporté) dans un terminal.
 
 | Bibliothèque | Licence |
 | --- | --- |

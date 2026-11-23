@@ -21,6 +21,12 @@ void ProjectSettings::_register_defaults() {
 	defaults["display/dark_title_bar"] = Variant(true);
 	defaults["display/fullscreen"] = Variant(false);
 	defaults["display/vsync"] = Variant(true);
+	defaults["display/borderless"] = Variant(false); // fenêtre du jeu sans barre de titre
+	defaults["display/always_on_top"] = Variant(false);
+	defaults["display/maximized"] = Variant(false); // fenêtre agrandie au démarrage
+	defaults["display/max_fps"] = Variant(0); // images par seconde au plus ; 0 : pas de limite
+	defaults["application/version"] = Variant("");
+	defaults["application/description"] = Variant("");
 	defaults["physics/gravity"] = Variant(980.0); // 2D, en pixels/s²
 	defaults["physics/3d/gravity"] = Variant(9.8); // 3D, en m/s² (vers -Y)
 	defaults["physics/ticks_per_second"] = Variant(60);
@@ -33,6 +39,9 @@ void ProjectSettings::_register_defaults() {
 	defaults["rendering/3d/shadow_size"] = Variant(2048);
 	defaults["rendering/3d/shadow_distance"] = Variant(40.0);
 	defaults["debug/visible_collision_shapes"] = Variant(false);
+	// Écran tactile (mêmes noms que dans Godot).
+	defaults["input_devices/pointing/emulate_touch_from_mouse"] = Variant(false);
+	defaults["input_devices/pointing/emulate_mouse_from_touch"] = Variant(true);
 	settings = defaults;
 }
 

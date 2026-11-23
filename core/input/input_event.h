@@ -127,6 +127,60 @@ public:
 	virtual String as_text() const override;
 };
 
+// Écran tactile : un doigt se pose ou se lève (classe et propriétés de Godot).
+class InputEventScreenTouch : public InputEvent {
+	GDCLASS(InputEventScreenTouch, InputEvent)
+
+	int index = 0;
+	Vector2 position;
+	bool pressed = false;
+	bool canceled = false;
+	bool double_tap = false;
+
+protected:
+	static void _bind_methods();
+
+public:
+	void set_index(int p_index) { index = p_index; }
+	int get_index() const { return index; }
+	void set_position(const Vector2 &p_pos) { position = p_pos; }
+	Vector2 get_position() const { return position; }
+	void set_pressed(bool p_pressed) { pressed = p_pressed; }
+	virtual bool is_pressed() const override { return pressed; }
+	void set_canceled(bool p_canceled) { canceled = p_canceled; }
+	bool is_canceled() const { return canceled; }
+	void set_double_tap(bool p_double) { double_tap = p_double; }
+	bool is_double_tap() const { return double_tap; }
+	virtual String as_text() const override;
+};
+
+// Écran tactile : un doigt posé se déplace.
+class InputEventScreenDrag : public InputEvent {
+	GDCLASS(InputEventScreenDrag, InputEvent)
+
+	int index = 0;
+	Vector2 position;
+	Vector2 relative;
+	Vector2 velocity;
+	float pressure = 0.0f;
+
+protected:
+	static void _bind_methods();
+
+public:
+	void set_index(int p_index) { index = p_index; }
+	int get_index() const { return index; }
+	void set_position(const Vector2 &p_pos) { position = p_pos; }
+	Vector2 get_position() const { return position; }
+	void set_relative(const Vector2 &p_rel) { relative = p_rel; }
+	Vector2 get_relative() const { return relative; }
+	void set_velocity(const Vector2 &p_velocity) { velocity = p_velocity; }
+	Vector2 get_velocity() const { return velocity; }
+	void set_pressure(float p_pressure) { pressure = p_pressure; }
+	float get_pressure() const { return pressure; }
+	virtual String as_text() const override;
+};
+
 class InputEventMouseMotion : public InputEventMouse {
 	GDCLASS(InputEventMouseMotion, InputEventMouse)
 

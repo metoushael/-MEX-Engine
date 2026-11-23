@@ -1,0 +1,8 @@
+extends Node
+# Chargement automatique des essais : [autoload] Compteur = "res://compteur.mx".
+
+var valeur = 41
+
+func suivant():
+	valeur += 1
+	return valeur

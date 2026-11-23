@@ -43,6 +43,20 @@ public:
 	// templates/<système>/ à côté de l'éditeur, puis dans le dossier de préférences
 	// (export_templates/<système>/), puis à côté de l'éditeur si le système est le même.
 	static String find_template(const String &p_platform);
+	// Page HTML d'un jeu exporté pour le web (repères « @...@ » remplacés à l'export).
+	static const char *get_web_shell();
+	static const char *get_web_platform();
+	// Adresse « file:// » de la page produite par un préréglage web en un seul fichier ; vide
+	// si elle n'a pas encore été exportée.
+	static String get_web_page_url(const String &p_project_dir, const ExportPreset &p_preset);
+	// Modèles incorporés à l'exécutable de l'éditeur : l'éditeur se distribue alors en un seul
+	// fichier. Chaque modèle est ajouté à la fin du fichier, suivi de sa taille (uint64), de
+	// l'identifiant du système sur 32 octets (« windows-x86_64 »...) et de 4 octets « MEXT ».
+	static bool embed_templates(const String &p_editor, const String &p_output, const std::vector<std::pair<String, String>> &p_templates, String &r_message);
+	// Identifiants des modèles incorporés à cet exécutable.
+	static std::vector<String> get_embedded_templates(const String &p_executable);
+	// Extrait un modèle incorporé dans le dossier de préférences ; renvoie son chemin, ou vide.
+	static String extract_embedded_template(const String &p_platform);
 	// Dossier attendu pour le modèle d'un système, à côté de l'éditeur (pour l'aide).
 	static String get_template_hint(const String &p_platform);
 

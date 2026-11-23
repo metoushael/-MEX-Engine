@@ -65,6 +65,11 @@ class Input : public Object {
 		float axes[JOY_AXIS_MAX] = { 0, 0, 0, 0, 0, 0 };
 	};
 	std::map<int, Joypad> joypads;
+	std::map<String, float> forced_actions; // action_press : action -> force
+	std::map<String, float> virtual_axes; // action_set_axis_value : action -> valeur brute
+	bool touchscreen_present = false;
+	bool emulate_touch_from_mouse = false;
+	bool mouse_touch_down = false;
 	std::function<void(int, float, float, float)> joy_vibration_handler;
 	std::function<void(int, int, float)> virtual_joy_handler;
 	std::map<String, ActionState> action_states;
@@ -126,7 +131,20 @@ public:
 	void set_mouse_position(const Vector2 &p_pos) { mouse_position = p_pos; }
 
 	// Simulation d'actions depuis le code.
-	void action_press(const String &p_action);
+	// Force de 0 à 1, comme dans Godot : l'action reste enfoncée jusqu'à action_release, même
+	// si d'autres touches sont pressées entre-temps (boutons tactiles, stick à l'écran).
+	void action_press(const String &p_action, float p_strength = 1.0f);
+	// Écran tactile. Un écran est « disponible » s'il existe, ou si la souris en tient lieu
+	// (paramètre input_devices/pointing/emulate_touch_from_mouse).
+	// Valeur d'axe virtuelle (0 à 1) pour une action : traitée comme le stick d'une manette,
+	// zone morte de l'action comprise. 0 la retire. Sert au stick à l'écran (VirtualJoystick).
+	void action_set_axis_value(const String &p_action, float p_value);
+	void set_touchscreen_present(bool p_present) { touchscreen_present = p_present; }
+	bool is_touchscreen_available() const { return touchscreen_present || emulate_touch_from_mouse; }
+	void set_emulate_touch_from_mouse(bool p_enable) { emulate_touch_from_mouse = p_enable; }
+	bool is_emulating_touch_from_mouse() const { return emulate_touch_from_mouse; }
+	// Événement tactile équivalent à un événement de souris (clic gauche, glissement), ou vide.
+	Ref<InputEvent> make_touch_from_mouse(const Ref<InputEvent> &p_event);
 	void action_release(const String &p_action);
 
 	Input();

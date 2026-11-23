@@ -1176,6 +1176,8 @@ void EditorNode::_draw_create_node_dialog() {
 	ImGui::EndPopup();
 }
 
+#include "main/licences.h"
+
 void EditorNode::_draw_about() {
 	if (about_open) {
 		about_open = false;
@@ -1187,12 +1189,25 @@ void EditorNode::_draw_about() {
 		ImGui::TextUnformatted("Moteur de jeu 2D et 3D avec éditeur intégré, créé par Metoushela.");
 		ImGui::TextDisabled("Son architecture s'inspire de celle de Godot Engine.");
 		ImGui::Spacing();
-		ImGui::TextUnformatted("Bibliothèques tierces :");
-		ImGui::BulletText("SDL2 (zlib)");
-		ImGui::BulletText("Dear ImGui %s (MIT)", ImGui::GetVersion());
-		ImGui::BulletText("stb_image, stb_truetype (domaine public / MIT)");
-		ImGui::BulletText("Police Roboto (Apache 2.0)");
-		ImGui::BulletText("Icônes Lucide (ISC)");
+		// Composants tiers : le texte complet de chaque licence est dans l'exécutable.
+		if (ImGui::CollapsingHeader("Composants et licences")) {
+			static int shown_licence = 0;
+			ImGui::BeginChild("##licence_list", ImVec2(ES(230), ES(190)), ImGuiChildFlags_Borders);
+			for (int i = 0; i < MEX_LICENCE_COUNT; i++) {
+				const String label = String(MEX_LICENCES[i].name) + "\n" + MEX_LICENCES[i].kind;
+				if (ImGui::Selectable(label.c_str(), shown_licence == i, 0, ImVec2(0, ImGui::GetTextLineHeight() * 2.0f))) {
+					shown_licence = i;
+				}
+			}
+			ImGui::EndChild();
+			ImGui::SameLine();
+			ImGui::BeginChild("##licence_text", ImVec2(ES(330), ES(190)), ImGuiChildFlags_Borders);
+			ImGui::PushTextWrapPos(0.0f);
+			ImGui::TextUnformatted(MEX_LICENCES[shown_licence].text);
+			ImGui::PopTextWrapPos();
+			ImGui::EndChild();
+			ImGui::TextDisabled("Dans un terminal : mex --licences (valable aussi pour un jeu exporté).");
+		}
 		ImGui::Spacing();
 		// État de l'affichage : à joindre à un signalement de problème.
 		ImGui::SeparatorText("Affichage");

@@ -8,6 +8,7 @@
 #include "core/input/input.h"
 #include "core/io/net_socket.h"
 #include "core/io/resource.h"
+#include "core/io/json.h"
 #include "core/io/resource_loader.h"
 #include "core/object/script_language.h"
 #include "core/os/os.h"
@@ -19,6 +20,7 @@ static InputMap *input_map = nullptr;
 static Input *input = nullptr;
 static TranslationServer *translation_server = nullptr;
 static Performance *performance = nullptr;
+static JSONSingleton *json = nullptr;
 
 void register_core_types() {
 	GDREGISTER_CLASS(Object);
@@ -30,6 +32,8 @@ void register_core_types() {
 	GDREGISTER_ABSTRACT_CLASS(InputEventMouse);
 	GDREGISTER_CLASS(InputEventMouseButton);
 	GDREGISTER_CLASS(InputEventMouseMotion);
+	GDREGISTER_CLASS(InputEventScreenTouch);
+	GDREGISTER_CLASS(InputEventScreenDrag);
 	GDREGISTER_CLASS(InputEventJoypadButton);
 	GDREGISTER_CLASS(InputEventJoypadMotion);
 	GDREGISTER_ABSTRACT_CLASS(Engine);
@@ -52,6 +56,9 @@ void register_core_types() {
 	input = memnew(Input);
 	translation_server = memnew(TranslationServer);
 	performance = memnew(Performance);
+	GDREGISTER_ABSTRACT_CLASS(JSONSingleton);
+	json = memnew(JSONSingleton);
+	engine->add_singleton("JSON", json);
 
 	engine->add_singleton("Engine", engine);
 	engine->add_singleton("OS", os);
@@ -65,6 +72,7 @@ void register_core_types() {
 
 void unregister_core_types() {
 	ResourceLoader::cleanup();
+	memdelete(json);
 	memdelete(performance);
 	memdelete(translation_server);
 	memdelete(input);

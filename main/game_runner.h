@@ -5,12 +5,15 @@
 #include "core/input/input_event.h"
 #include "core/math/vector2.h"
 
+#include <vector>
+
 class SceneTree;
 
 class GameRunner {
 	SceneTree *tree = nullptr;
 	double accumulator = 0;
 	String scene_path;
+	std::vector<String> autoloads; // noms globaux des chargements automatiques de cette partie
 
 public:
 	// Charge la scène et démarre l'arbre. p_viewport_size : résolution logique du jeu.

@@ -12,9 +12,11 @@
 #include "servers/rendering_server_3d.h"
 
 #include <functional>
+#include <memory>
 
 class Node;
 class CanvasItem;
+class EditorAgent;
 class SceneTree;
 class TileMap;
 class AnimatedSprite2D;
@@ -78,6 +80,9 @@ private:
 	float pref_font_size = 16.0f;
 	float pref_rounding = 5.0f;
 	bool pref_thumbnails = true;
+	float pref_code_font_size = 0.0f; // texte de l'éditeur de script ; 0 : comme l'interface
+	bool pref_save_on_run = true; // enregistrer la scène et le script avant de lancer le jeu
+	bool pref_clear_output_on_run = false; // vider le panneau « Sortie » à chaque lancement
 	float pref_thumbnail_size = 72.0f;
 	bool pref_files_grid = false;
 	// Barre de titre intégrée à l'éditeur (boutons Réduire, Agrandir, Fermer dans la barre du
@@ -127,6 +132,10 @@ private:
 	void _rescale_dock_layout(unsigned int p_dockspace_id); // les panneaux suivent la taille de la fenêtre
 	void _apply_window_settings(); // taille minimale et couleurs de la barre du système
 	void _load_prefs();
+	// Assistant « MEX Agent » (editor_agent.h).
+	friend class EditorAgent;
+	friend class EditorAgentTools;
+	std::unique_ptr<EditorAgent> agent;
 	void _save_prefs();
 	void _draw_preferences();
 	// Bouton mis en avant (couleur d'accent) ; même comportement qu'ImGui::Button.

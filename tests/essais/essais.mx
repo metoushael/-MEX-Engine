@@ -19,6 +19,9 @@ var largeur_fr = 0
 var cible_libre
 var manette_virtuelle = -1
 var evenements_manette = 0
+var bouton_tactile
+var stick_tactile
+var signaux_tactiles = 0
 
 func verifier(nom, condition):
 	if condition:
@@ -763,5 +766,68 @@ func _process(delta):
 		verifier("manette virtuelle : de SDL jusqu'au script", Input.is_joy_button_pressed(manette_virtuelle, JOY_BUTTON_X) and abs(Input.get_joy_axis(manette_virtuelle, JOY_AXIS_RIGHT_X) + 0.5) < 0.01 and evenements_manette >= 2)
 		Input.virtual_joy_button(JOY_BUTTON_X, false)
 		Input.virtual_joy_axis(JOY_AXIS_RIGHT_X, 0.0)
+	if images == 34:
+		essai_tactile()
+	if images == 36:
+		essai_tactile_fin()
 	if images == 40:
 		print("BILAN  ", reussis, " réussis, ", echecs, " échecs")
+
+# --- Écran tactile, JSON, chargements automatiques (0.10.0) ---
+
+func doigt(numero, position, pose):
+	var e = InputEventScreenTouch.new()
+	e.index = numero
+	e.position = position
+	e.pressed = pose
+	get_tree().push_input(e)
+
+func glisser(numero, position):
+	var e = InputEventScreenDrag.new()
+	e.index = numero
+	e.position = position
+	get_tree().push_input(e)
+
+func essai_tactile():
+	InputMap.add_action("tactile_saut")
+	for action in ["tactile_gauche", "tactile_droite", "tactile_haut", "tactile_bas"]:
+		InputMap.add_action(action)
+	bouton_tactile = TouchScreenButton.new()
+	bouton_tactile.position = Vector2(700, 300)
+	bouton_tactile.radius = 20.0
+	bouton_tactile.action = "tactile_saut"
+	bouton_tactile.pressed.connect(func(): signaux_tactiles += 1)
+	bouton_tactile.released.connect(func(): signaux_tactiles += 10)
+	add_child(bouton_tactile)
+	stick_tactile = VirtualJoystick.new()
+	stick_tactile.position = Vector2(800, 400)
+	stick_tactile.radius = 50.0
+	stick_tactile.action_left = "tactile_gauche"
+	stick_tactile.action_right = "tactile_droite"
+	stick_tactile.action_up = "tactile_haut"
+	stick_tactile.action_down = "tactile_bas"
+	add_child(stick_tactile)
+	# Un doigt à côté du bouton ne le presse pas ; un doigt dessus le presse.
+	doigt(0, Vector2(760, 300), true)
+	var a_cote = bouton_tactile.is_pressed()
+	doigt(0, Vector2(760, 300), false)
+	doigt(0, Vector2(720, 320), true)
+	verifier("tactile : le bouton ne répond qu'au doigt posé dessus", not a_cote and bouton_tactile.is_pressed() and Input.is_action_pressed("tactile_saut") and signaux_tactiles == 1)
+	# Deuxième doigt sur le stick pendant que le premier tient le bouton.
+	doigt(1, Vector2(800, 400), true)
+	glisser(1, Vector2(850, 400))
+	var plein = stick_tactile.get_output()
+	glisser(1, Vector2(825, 400))
+	verifier("tactile : deux doigts, stick progressif", bouton_tactile.is_pressed() and abs(plein.x - 1.0) < 0.01 and abs(stick_tactile.get_output().x - 0.5) < 0.01 and Input.get_action_strength("tactile_droite") > 0.3 and Input.get_action_strength("tactile_droite") < 0.7 and not Input.is_action_pressed("tactile_gauche"))
+	# JSON : aller-retour, échappements, texte invalide.
+	var texte = JSON.stringify({"score": 12, "noms": ["a", "é\n\"b\""], "ok": true, "vide": null, "pi": 3.5})
+	var relu = JSON.parse_string(texte)
+	verifier("JSON : écriture puis relecture", relu["score"] == 12 and relu["noms"][1] == "é\n\"b\"" and relu["ok"] == true and relu["vide"] == null and relu["pi"] == 3.5 and JSON.parse_string("[1, 2,") == null and JSON.parse_string("{\"a\": \"\\u00e9\\ud83d\\ude00\"}")["a"] == "é😀")
+	verifier("chargement automatique : nœud global gardé à la racine", Compteur.valeur == 41 and Compteur.suivant() == 42 and Compteur.get_path() == "/root/Compteur")
+
+func essai_tactile_fin():
+	doigt(0, Vector2(720, 320), false)
+	doigt(1, Vector2(825, 400), false)
+	verifier("tactile : tout est relâché quand les doigts se lèvent", not bouton_tactile.is_pressed() and not Input.is_action_pressed("tactile_saut") and signaux_tactiles == 11 and stick_tactile.get_output() == Vector2(0, 0) and Input.get_action_strength("tactile_droite") == 0)
+	bouton_tactile.queue_free()
+	stick_tactile.queue_free()

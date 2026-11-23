@@ -5,6 +5,7 @@
 #include "core/io/file_access.h"
 #include "core/object/class_db.h"
 #include "core/string/ustring.h"
+#include "editor_agent.h"
 #include "editor_ui.h"
 #include "servers/display_server.h"
 
@@ -101,6 +102,9 @@ void EditorNode::_load_prefs() {
 			pref_thumbnails = config.get_value("fichiers", "miniatures", Variant(pref_thumbnails)).as_bool();
 			pref_thumbnail_size = (float)config.get_value("fichiers", "taille_des_miniatures", Variant((double)pref_thumbnail_size)).as_float();
 			pref_files_grid = config.get_value("fichiers", "grille", Variant(pref_files_grid)).as_bool();
+			pref_code_font_size = (float)config.get_value("script", "taille_du_texte", Variant((double)pref_code_font_size)).as_float();
+			pref_save_on_run = config.get_value("execution", "enregistrer_avant_de_lancer", Variant(pref_save_on_run)).as_bool();
+			pref_clear_output_on_run = config.get_value("execution", "vider_la_sortie", Variant(pref_clear_output_on_run)).as_bool();
 			pref_display_checked = config.get_value("affichage", "configuration_validee", Variant(pref_display_checked)).as_string();
 		}
 	}
@@ -127,6 +131,7 @@ void EditorNode::_load_prefs() {
 	pref_font_size = std::clamp(pref_font_size, 11.0f, 26.0f);
 	pref_rounding = std::clamp(pref_rounding, 0.0f, 12.0f);
 	pref_thumbnail_size = std::clamp(pref_thumbnail_size, 40.0f, 160.0f);
+	pref_code_font_size = pref_code_font_size <= 0.0f ? 0.0f : std::clamp(pref_code_font_size, 10.0f, 32.0f);
 }
 
 void EditorNode::_save_prefs() {
@@ -144,6 +149,9 @@ void EditorNode::_save_prefs() {
 	config.set_value("fichiers", "miniatures", Variant(pref_thumbnails));
 	config.set_value("fichiers", "taille_des_miniatures", Variant((double)pref_thumbnail_size));
 	config.set_value("fichiers", "grille", Variant(pref_files_grid));
+	config.set_value("script", "taille_du_texte", Variant((double)pref_code_font_size));
+	config.set_value("execution", "enregistrer_avant_de_lancer", Variant(pref_save_on_run));
+	config.set_value("execution", "vider_la_sortie", Variant(pref_clear_output_on_run));
 	config.set_value("fenetre", get_title_bar_preference_key(), Variant(pref_custom_title_bar));
 	config.set_value("affichage", "pilote_de_rendu", Variant(pref_render_driver));
 	if (pref_display_checked != "*") {
@@ -410,6 +418,8 @@ const char *EditorNode::_class_icon(const String &p_class) {
 		{ "LineEdit", ICON_NODE_LINE_EDIT },
 		{ "MarginContainer", ICON_NODE_MARGIN },
 		{ "Marker2D", ICON_NODE_MARKER },
+		{ "TouchScreenButton", ICON_NODE_BUTTON },
+		{ "VirtualJoystick", ICON_DOCK_GAME },
 		{ "Marker3D", ICON_NODE_MARKER },
 		{ "MeshInstance3D", ICON_NODE_MESH },
 		{ "Skeleton3D", ICON_NODE_MESH },
@@ -720,6 +730,37 @@ void EditorNode::_draw_preferences() {
 	ImGui::SliderFloat("##thumb_size", &pref_thumbnail_size, 40.0f, 160.0f, "%.0f px");
 	changed |= ImGui::IsItemDeactivatedAfterEdit();
 
+	// --- Script et exécution ---
+	ImGui::SeparatorText(ICON_DOCK_SCRIPT "  Script et jeu");
+	row("Taille du texte du code");
+	{
+		bool same = pref_code_font_size <= 0.0f;
+		if (ImGui::Checkbox("Comme l'interface##code_same", &same)) {
+			pref_code_font_size = same ? 0.0f : pref_font_size;
+			changed = true;
+		}
+		if (!same) {
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(ES(140));
+			ImGui::SliderFloat("##code_font", &pref_code_font_size, 10.0f, 32.0f, "%.0f px");
+			changed |= ImGui::IsItemDeactivatedAfterEdit();
+		}
+	}
+	row("Avant de lancer le jeu");
+	changed |= ImGui::Checkbox("Enregistrer la scène et le script##save_on_run", &pref_save_on_run);
+	ImGui::SetItemTooltip("Décoché : le jeu se lance avec les fichiers tels qu'ils sont sur le disque.");
+	row("Panneau « Sortie »");
+	changed |= ImGui::Checkbox("Le vider à chaque lancement##clear_output", &pref_clear_output_on_run);
+
+	// --- MEX Agent ---
+	ImGui::SeparatorText(ICON_SPARKLES "  MEX Agent");
+	row("Assistant");
+	if (ImGui::Button(ICON_SETTINGS "  Fournisseur, clé d'API et modèle...")) {
+		agent->open_settings();
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SetItemTooltip("Ouvre le panneau MEX Agent sur ses réglages de connexion.\nLes clés sont enregistrées sur cet ordinateur, jamais dans le projet.");
+
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();
@@ -732,6 +773,9 @@ void EditorNode::_draw_preferences() {
 		pref_rounding = 5.0f;
 		pref_thumbnails = true;
 		pref_thumbnail_size = 72.0f;
+		pref_code_font_size = 0.0f;
+		pref_save_on_run = true;
+		pref_clear_output_on_run = false;
 		pref_render_driver = "auto";
 		{
 			// Barre de titre : réglage d'origine du système (intégrée sous Windows et Linux).

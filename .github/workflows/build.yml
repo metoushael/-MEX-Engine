@@ -1,5 +1,5 @@
-# Compile MEX pour Linux, Windows et macOS, puis publie les archives dans les
-# « Releases » du dépôt GitHub.
+# Compile MEX pour Linux, Windows, macOS et le web, puis publie les fichiers dans les
+# « Releases » du dépôt GitHub : sous Windows et Linux, l'éditeur tient en un seul fichier.
 #
 # - Envoi sur la branche principale (main ou master) : les archives remplacent celles
 #   de la préversion « Dernière compilation » (étiquette « continu »). Elle suit donc
@@ -229,54 +229,101 @@ jobs:
           test -s demo3d.bmp
           rm -f demo3d.bmp essai3d.log
 
-      - name: Archive
-        run: |
-          mkdir -p "$PACKAGE/licences"
-          cp dist/* "$PACKAGE/"
-          cp -r projects docs README.md "$PACKAGE/"
-          # Modèle d'export de ce système. Pour exporter vers les autres systèmes, on réunit les
-          # dossiers « templates » des trois archives à côté de l'éditeur.
-          mkdir -p "$PACKAGE/templates/${{ matrix.platform }}"
-          cp dist/mex-jeu* "$PACKAGE/templates/${{ matrix.platform }}/"
-          # Identité visuelle : guide du logo, logos et icônes (le README affiche le logo).
-          mkdir -p "$PACKAGE/branding"
-          cp -r branding/GUIDE.md branding/mex-presentation.html branding/svg branding/png branding/web branding/app branding/mex.ico branding/mex.icns "$PACKAGE/branding/"
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            cp platform/linux/mex.desktop "$PACKAGE/"
-            cp branding/app/mex-icone-256.png "$PACKAGE/mex.png"
-          fi
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            # Lanceur du mode de compatibilité (barre de titre de Windows, rendu Direct3D).
-            cp platform/windows/mex-sans-echec.bat "$PACKAGE/"
-          fi
-          cp thirdparty/imgui/LICENSE.txt "$PACKAGE/licences/imgui.txt"
-          cp thirdparty/stb/LICENSE.txt "$PACKAGE/licences/stb.txt"
-          cp thirdparty/fonts/LICENSE.txt "$PACKAGE/licences/roboto.txt"
-          cp thirdparty/lucide/LICENSE.txt "$PACKAGE/licences/lucide.txt"
-          cp thirdparty/godot/LICENSE.txt "$PACKAGE/licences/godot.txt"
-          sdl_source=$(ls -d build*/_deps/mex_sdl2-src | head -n 1)
-          cp "$sdl_source/LICENSE.txt" "$PACKAGE/licences/sdl2.txt"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            zip -qr "$PACKAGE.zip" "$PACKAGE"
-          else
-            tar -czf "$PACKAGE.tar.gz" "$PACKAGE"
-          fi
-          ls -l "$PACKAGE" "$PACKAGE".*
-
-      - name: Envoi de l'archive
+      # Les exécutables partent tels quels : la tâche « Assemblage » en fait les fichiers publiés.
+      - name: Envoi des exécutables
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.PACKAGE }}
-          path: |
-            ${{ env.PACKAGE }}.zip
-            ${{ env.PACKAGE }}.tar.gz
+          name: binaires-${{ matrix.platform }}
+          path: dist/mex*
+          if-no-files-found: error
+
+  # Modèle d'export web : le moteur de jeu compilé en WebAssembly (un seul fichier mex-jeu.js).
+  web:
+    name: Web (WebAssembly)
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      EMSCRIPTEN_VERSION: 3.1.74
+    steps:
+      - name: Récupération des sources
+        uses: actions/checkout@v7
+
+      - name: Emscripten
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          "$HOME/emsdk/emsdk" install "$EMSCRIPTEN_VERSION"
+          "$HOME/emsdk/emsdk" activate "$EMSCRIPTEN_VERSION"
+
+      - name: Compilation
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          emcmake cmake -S . -B build-web -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMEX_VERSION="$VERSION"
+          cmake --build build-web
+          mkdir -p dist
+          cp build-web/bin/mex-jeu.js dist/
+          ls -l dist
+          test -s dist/mex-jeu.js
+
+      - name: Envoi du modèle web
+        uses: actions/upload-artifact@v7
+        with:
+          name: binaires-web-wasm32
+          path: dist/mex-jeu.js
+          if-no-files-found: error
+
+  # Réunit les exécutables de tous les systèmes : l'éditeur de Windows et celui de Linux
+  # reçoivent les modèles d'export de tous les systèmes et tiennent chacun en un seul fichier.
+  package:
+    name: Assemblage
+    needs: [prepare, build, web]
+    # Un système qui n'a pas compilé est laissé de côté ; les autres sont assemblés.
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      LABEL: ${{ needs.prepare.outputs.label }}
+    steps:
+      - name: Récupération des sources
+        uses: actions/checkout@v7
+
+      - name: Récupération des exécutables
+        uses: actions/download-artifact@v8
+        with:
+          path: binaires
+          pattern: binaires-*
+
+      - name: Assemblage
+        run: |
+          ls -lR binaires
+          bash tools/assembler_publication.sh binaires "$LABEL" publication
+
+      # L'éditeur Linux en un seul fichier, seul dans un dossier vide, exporte le jeu d'exemple
+      # (Linux, web, Windows) puis le jeu exporté est lancé.
+      - name: Essai de l'éditeur en un seul fichier
+        run: |
+          systemes=""
+          if [ -f binaires/binaires-web-wasm32/mex-jeu.js ]; then systemes="$systemes web"; fi
+          if [ -f binaires/binaires-windows-x86_64/mex-jeu.exe ]; then systemes="$systemes windows"; fi
+          bash tools/essai_fichier_unique.sh "publication/mex-$LABEL-linux-x86_64" $systemes
+
+      - name: Envoi des fichiers à publier
+        uses: actions/upload-artifact@v7
+        with:
+          name: mex-${{ needs.prepare.outputs.label }}
+          path: publication/*
           if-no-files-found: error
 
   release:
     name: Publication
-    needs: [prepare, build]
-    # Publie les plateformes qui ont réussi, même si une autre a échoué.
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.kind != 'aucune' }}
+    needs: [prepare, package]
+    # Publie les systèmes qui ont réussi, même si un autre a échoué.
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.package.result == 'success' && needs.prepare.outputs.kind != 'aucune' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -286,11 +333,11 @@ jobs:
       group: publication-${{ needs.prepare.outputs.tag }}
       cancel-in-progress: false
     steps:
-      - name: Récupération des archives
+      - name: Récupération des fichiers
         uses: actions/download-artifact@v8
         with:
+          name: mex-${{ needs.prepare.outputs.label }}
           path: release
-          merge-multiple: true
 
       - name: Publication
         env:
@@ -304,7 +351,7 @@ jobs:
           cd release
           count=$(find . -maxdepth 1 -name 'mex-*' | wc -l)
           if [ "$count" -eq 0 ]; then
-            echo "::error::Aucune archive à publier : toutes les compilations ont échoué."
+            echo "::error::Aucun fichier à publier : toutes les compilations ont échoué."
             exit 1
           fi
           sha256sum mex-* > SHA256SUMS.txt
@@ -320,18 +367,29 @@ jobs:
             echo
             echo "| Système | Fichier |"
             echo "| --- | --- |"
-            echo "| Windows 10 ou 11 (64 bits) | \`mex-$LABEL-windows-x86_64.zip\` |"
-            echo "| Linux x86_64 (glibc 2.39 ou plus récente : Ubuntu 24.04, Debian 13, Fedora 40...) | \`mex-$LABEL-linux-x86_64.tar.gz\` |"
+            echo "| Windows 10 ou 11 (64 bits) | \`mex-$LABEL-windows-x86_64.exe\` : un seul fichier, rien à décompresser |"
+            echo "| Windows, version console (facultative) | \`mex-$LABEL-windows-x86_64.console.exe\`, à placer à côté du premier |"
+            echo "| Linux x86_64 (glibc 2.39 ou plus récente : Ubuntu 24.04, Debian 13, Fedora 40...) | \`mex-$LABEL-linux-x86_64\` : un seul fichier |"
             echo "| macOS 11 ou plus récent (Intel et Apple Silicon) | \`mex-$LABEL-macos-universal.tar.gz\` |"
+            echo "| Projets d'exemple (facultatifs) | \`mex-$LABEL-exemples.zip\` |"
             echo
-            echo "Décompressez l'archive puis lancez \`mex\` (\`mex.exe\` sous Windows). Le fichier README.md de l'archive explique la suite."
+            echo "**Windows :** téléchargez le fichier \`.exe\` et lancez-le. Il contient l'éditeur et les modèles d'export (Windows, Linux, macOS, web)."
             echo
-            echo "Sous macOS, les exécutables ne sont pas signés par un développeur identifié. Après la décompression, dans le Terminal :"
+            echo "**Linux :** après le téléchargement, rendez le fichier exécutable puis lancez-le :"
+            echo
+            echo "    chmod +x mex-$LABEL-linux-x86_64"
+            echo "    ./mex-$LABEL-linux-x86_64"
+            echo
+            echo "**macOS :** les exécutables ne sont pas signés par un développeur identifié. Après la décompression, dans le Terminal :"
             echo
             echo "    xattr -dr com.apple.quarantine mex-$LABEL-macos-universal"
-            if [ "$count" -lt 3 ]; then
+            missing=""
+            [ -f "mex-$LABEL-windows-x86_64.exe" ] || missing="$missing Windows"
+            [ -f "mex-$LABEL-linux-x86_64" ] || missing="$missing Linux"
+            [ -f "mex-$LABEL-macos-universal.tar.gz" ] || missing="$missing macOS"
+            if [ -n "$missing" ]; then
               echo
-              echo "> **Attention :** la compilation a échoué pour au moins un système ; son archive manque dans cette publication."
+              echo "> **Attention :** la compilation a échoué pour :$missing. Ces fichiers manquent dans cette publication."
             fi
           } > ../notes.md
 
