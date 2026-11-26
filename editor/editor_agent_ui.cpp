@@ -69,20 +69,72 @@ void text_bold(ImDrawList *p_dl, ImFont *p_font, float p_size, const ImVec2 &p_p
 	p_dl->AddText(p_font, p_size, ImVec2(p_pos.x + std::max(0.5f, p_size * 0.04f), p_pos.y), p_color, p_begin, p_end);
 }
 
-// Emblème : disque en dégradé qui respire, plus vif quand l'agent travaille.
+// Emblème de MEX Agent : un robot de conversation. Sa tête est une bulle de dialogue (avec sa
+// pointe), surmontée d'une antenne. Les yeux clignent ; quand l'agent travaille, ils balaient
+// de gauche à droite et l'antenne clignote. Tout tient dans le cercle de rayon p_radius.
 void draw_orb(ImDrawList *p_dl, const ImVec2 &p_center, float p_radius, bool p_active) {
+	const float r = p_radius;
+	const ImVec2 c = p_center;
+	const bool detailed = r >= ES(15);
 	const float pulse = L.animate ? 0.5f + 0.5f * (float)std::sin(L.now * (p_active ? 5.0 : 1.5)) : 0.5f;
-	for (int i = 3; i >= 1; i--) {
-		p_dl->AddCircleFilled(p_center, p_radius + p_radius * 0.16f * i * (0.55f + 0.6f * pulse), U(L.accent, 0.045f * (4 - i)), 48);
+	const ImVec2 head_min(c.x - r * 0.94f, c.y - r * 0.56f);
+	const ImVec2 head_max(c.x + r * 0.94f, c.y + r * 0.60f);
+	const float rounding = r * 0.36f;
+
+	// Halo, qui respire.
+	for (int i = (detailed ? 3 : 1); i >= 1; i--) {
+		const float grow = r * (detailed ? 0.13f : 0.2f) * i * (0.55f + 0.6f * pulse);
+		p_dl->AddRectFilled(ImVec2(head_min.x - grow, head_min.y - grow), ImVec2(head_max.x + grow, head_max.y + grow), U(L.accent, (detailed ? 0.05f : 0.10f) * (4 - i) * (p_active || detailed ? 1.0f : 0.5f)), rounding + grow);
 	}
-	p_dl->AddCircleFilled(p_center, p_radius, U(L.accent), 48);
-	const float angle = L.animate ? (float)std::fmod(L.now * (p_active ? 2.6 : 0.8), 6.283185307) : 0.8f;
-	const ImVec2 spot(p_center.x + std::cos(angle) * p_radius * 0.3f, p_center.y + std::sin(angle) * p_radius * 0.3f);
-	p_dl->AddCircleFilled(spot, p_radius * 0.7f, U(L.accent2, 0.6f), 40);
-	const float size = p_radius * 1.15f;
-	ImFont *font = ImGui::GetFont();
-	const ImVec2 icon = font->CalcTextSizeA(size, FLT_MAX, 0.0f, ICON_SPARKLES);
-	p_dl->AddText(font, size, ImVec2(p_center.x - icon.x * 0.5f, p_center.y - icon.y * 0.5f), U(L.on_accent), ICON_SPARKLES);
+
+	// Corps : antenne, oreilles, tête, pointe de la bulle. Un seul dégradé, de haut en bas.
+	const int first_vertex = p_dl->VtxBuffer.Size;
+	const ImU32 body = U(L.accent);
+	p_dl->AddLine(ImVec2(c.x, c.y - r * 0.56f), ImVec2(c.x, c.y - r * 0.84f), body, std::max(1.6f, r * 0.13f));
+	if (detailed) {
+		p_dl->AddRectFilled(ImVec2(c.x - r * 1.07f, c.y - r * 0.16f), ImVec2(c.x - r * 0.90f, c.y + r * 0.20f), body, r * 0.06f);
+		p_dl->AddRectFilled(ImVec2(c.x + r * 0.90f, c.y - r * 0.16f), ImVec2(c.x + r * 1.07f, c.y + r * 0.20f), body, r * 0.06f);
+	}
+	p_dl->AddRectFilled(head_min, head_max, body, rounding);
+	p_dl->AddTriangleFilled(ImVec2(c.x - r * 0.56f, c.y + r * 0.56f), ImVec2(c.x - r * 0.08f, c.y + r * 0.56f), ImVec2(c.x - r * 0.54f, c.y + r * 1.0f), body);
+	ImGui::ShadeVertsLinearColorGradientKeepAlpha(p_dl, first_vertex, p_dl->VtxBuffer.Size, ImVec2(c.x - r * 0.4f, c.y - r), ImVec2(c.x + r * 0.4f, c.y + r), U(mix(L.accent, Color(1, 1, 1, 1), 0.16f)), U(mix(L.accent, L.accent2, 0.42f)));
+
+	// Bout de l'antenne : il clignote pendant le travail.
+	const Color tip = p_active ? mix(L.accent, Color(1, 1, 1, 1), 0.25f + 0.6f * pulse) : mix(L.accent, Color(1, 1, 1, 1), 0.16f);
+	if (p_active) {
+		p_dl->AddCircleFilled(ImVec2(c.x, c.y - r * 0.88f), r * (0.2f + 0.14f * pulse), U(tip, 0.25f), 20);
+	}
+	p_dl->AddCircleFilled(ImVec2(c.x, c.y - r * 0.88f), std::max(1.6f, r * 0.14f), U(tip), 20);
+
+	// Visage.
+	float blink = 1.0f;
+	float look = 0.0f;
+	if (L.animate) {
+		const double t = std::fmod(L.now + 1.3, 4.6);
+		if (t < 0.16) {
+			blink = std::max(0.12f, (float)std::fabs(t - 0.08) / 0.08f);
+		}
+		if (p_active) {
+			look = (float)std::sin(L.now * 4.2) * r * 0.11f;
+		}
+	}
+	const ImU32 face = U(L.on_accent);
+	const float eye_w = std::max(1.1f, r * 0.115f);
+	const float eye_h = std::max(1.0f, r * 0.21f * blink);
+	const float eye_y = c.y - r * (detailed ? 0.06f : 0.0f);
+	for (int side = -1; side <= 1; side += 2) {
+		const float x = c.x + side * r * 0.38f + look;
+		p_dl->AddRectFilled(ImVec2(x - eye_w, eye_y - eye_h), ImVec2(x + eye_w, eye_y + eye_h), face, std::min(eye_w, eye_h));
+	}
+	if (detailed) {
+		// Sourire ; pendant le travail, une bouche ronde qui « parle ».
+		if (p_active) {
+			p_dl->AddCircleFilled(ImVec2(c.x + look * 0.6f, c.y + r * 0.30f), r * (0.06f + 0.05f * pulse), face, 16);
+		} else {
+			p_dl->PathArcTo(ImVec2(c.x, c.y + r * 0.18f), r * 0.2f, 3.14159265f * 0.18f, 3.14159265f * 0.82f, 14);
+			p_dl->PathStroke(face, 0, std::max(1.3f, r * 0.075f));
+		}
+	}
 }
 
 void draw_spinner(ImDrawList *p_dl, const ImVec2 &p_center, float p_radius, ImU32 p_color, float p_thickness) {
@@ -863,7 +915,7 @@ void EditorAgent::draw() {
 		ImGui::SetNextWindowSize(EditorUI::dialog_size(420, 600), ImGuiCond_FirstUseEver);
 	}
 	bool visible = open;
-	const bool shown = ImGui::Begin(ICON_SPARKLES "  MEX Agent###Agent", agent_mode ? nullptr : &visible, flags);
+	const bool shown = ImGui::Begin(ICON_CHATBOT "  MEX Agent###Agent", agent_mode ? nullptr : &visible, flags);
 	ImGui::PopStyleVar(pushed_vars);
 	if (visible != open) {
 		open = visible;
@@ -1204,7 +1256,7 @@ void EditorAgent::draw() {
 	const String model_label = model.empty() ? String(provider.label) : model;
 	const float approval_width = ImGui::CalcTextSize(ask_before_changes ? "Demander" : "Automatique").x + ImGui::CalcTextSize(ICON_LOCK).x + ES(26);
 	const bool room_for_approval = chips_width > approval_width + ES(90);
-	if (chip("##modele", ICON_SPARKLES, model_label.c_str(), (String(provider.label) + "\nCliquer pour changer de service ou de modèle.").c_str(), std::max(ES(60), chips_width - (room_for_approval ? approval_width + ES(6) : 0.0f)))) {
+	if (chip("##modele", ICON_BOT, model_label.c_str(), (String(provider.label) + "\nCliquer pour changer de service ou de modèle.").c_str(), std::max(ES(60), chips_width - (room_for_approval ? approval_width + ES(6) : 0.0f)))) {
 		ImGui::OpenPopup("##choix_modele");
 	}
 	if (room_for_approval) {

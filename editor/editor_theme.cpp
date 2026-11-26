@@ -753,7 +753,7 @@ void EditorNode::_draw_preferences() {
 	changed |= ImGui::Checkbox("Le vider à chaque lancement##clear_output", &pref_clear_output_on_run);
 
 	// --- MEX Agent ---
-	ImGui::SeparatorText(ICON_SPARKLES "  MEX Agent");
+	ImGui::SeparatorText(ICON_CHATBOT "  MEX Agent");
 	row("Assistant");
 	if (ImGui::Button(ICON_SETTINGS "  Fournisseur, clé d'API et modèle...")) {
 		agent->open_settings();

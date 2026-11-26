@@ -34,7 +34,24 @@ Fichiers facultatifs :
 
 - `mex-<version>-windows-x86_64.console.exe` : la [version console](#version-console-windows)
   pour Windows, à placer à côté du `.exe` ;
-- `mex-<version>-exemples.zip` : les deux [projets d'exemple](#projets-dexemple).
+- `mex-<version>-exemples.zip` : les deux [projets d'exemple](#projets-dexemple) ;
+- `mex-<version>-modeles-export.tpz` : le paquet des [modèles d'export](#modèles-dexport) de
+  tous les systèmes.
+
+**Archives complètes.** Chaque publication contient aussi, pour chaque système, tout ce que
+la compilation a produit, avec les modèles d'export de **tous** les systèmes :
+
+| Fichier | Contenu |
+| --- | --- |
+| `mex-<version>-windows-x86_64.zip` | `mex.exe`, `mex.console.exe`, `mex-jeu.exe`, `LISEZMOI.txt`, `templates/` |
+| `mex-<version>-linux-x86_64.tar.gz` | `mex`, `mex-jeu`, `LISEZMOI.txt`, `templates/` |
+| `mex-<version>-macos-universal.tar.gz` | `mex`, `mex-jeu`, `LISEZMOI.txt`, `templates/` |
+| `mex-<version>-web-wasm32.zip` | `mex-jeu.js`, le modèle d'export web seul |
+
+Le dossier `templates/` est le même dans les trois archives : `windows-x86_64/mex-jeu.exe`,
+`linux-x86_64/mex-jeu`, `macos-universal/mex-jeu`, `web-wasm32/mex-jeu.js` et `version.txt`.
+L'éditeur le trouve à côté de lui : rien à installer pour exporter vers un autre système.
+`mex-jeu` lance un projet sans l'éditeur (`mex-jeu --path <dossier>`).
 
 Sous macOS, un exécutable signé ne peut rien recevoir à sa suite : l'archive contient donc
 l'éditeur `mex`, le modèle `mex-jeu` et un dossier `templates/` pour les autres systèmes. La
@@ -113,7 +130,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.11.0). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.11.1). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -161,8 +178,8 @@ de l'éditeur** : il démarre l'éditeur dans le terminal, y affiche ses message
 scripts, erreurs, résultat d'un export) et rend son code de retour.
 
 ```bat
-mex-v0.11.0-windows-x86_64.console.exe --path mon_projet --export "*"
-mex-v0.11.0-windows-x86_64.console.exe --version
+mex-v0.11.1-windows-x86_64.console.exe --path mon_projet --export "*"
+mex-v0.11.1-windows-x86_64.console.exe --version
 ```
 
 Le lanceur cherche l'éditeur qui porte le même nom que lui sans `.console` : renommez les
@@ -997,6 +1014,9 @@ méthode, ni le nom et le type des arguments des méthodes (seulement leur nombr
   sous les yeux. Le bouton en haut à droite du panneau passe de l'un à l'autre, et la
   conversation suit.
 
+MEX Agent se reconnaît à son emblème, un petit robot de conversation (une bulle de dialogue
+avec des yeux et une antenne) : il cligne des yeux, et s'anime quand l'agent travaille.
+
 Dans les deux cas : réponses mises en forme (titres, listes, gras, blocs de code avec bouton
 *Copier*), étapes de l'agent sur une ligne chacune (un clic montre le détail), demande
 d'accord dans une carte, zone de saisie qui grandit avec le texte. Sous la saisie, une
@@ -1531,7 +1551,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.11.0"
+git commit -m "MEX 0.11.1"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -1541,7 +1561,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Fichiers `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.11.0**. Fichiers `mex-v0.11.0-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.11.1**. Fichiers `mex-v0.11.1-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -1551,25 +1571,28 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.11.0
-  git push origin v0.11.0
+  git tag v0.11.1
+  git push origin v0.11.1
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.11.0` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.11.1` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.11.0-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
-- `mex-v0.11.0-windows-x86_64.console.exe` : sa version console ;
-- `mex-v0.11.0-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
-- `mex-v0.11.0-macos-universal.tar.gz` : l'éditeur pour macOS et les modèles d'export ;
-- `mex-v0.11.0-modeles-export.tpz` : le paquet des modèles d'export ;
-- `mex-v0.11.0-exemples.zip` : les projets d'exemple ;
+- `mex-v0.11.1-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
+- `mex-v0.11.1-windows-x86_64.console.exe` : sa version console ;
+- `mex-v0.11.1-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
+- `mex-v0.11.1-windows-x86_64.zip`, `mex-v0.11.1-linux-x86_64.tar.gz`,
+  `mex-v0.11.1-macos-universal.tar.gz` : les archives complètes (éditeur, version console,
+  `mex-jeu`, et les modèles d'export de tous les systèmes dans `templates/`) ;
+- `mex-v0.11.1-web-wasm32.zip` : le modèle d'export web seul ;
+- `mex-v0.11.1-modeles-export.tpz` : le paquet des modèles d'export ;
+- `mex-v0.11.1-exemples.zip` : les projets d'exemple ;
 - `SHA256SUMS.txt`, les empreintes de ces fichiers.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.11.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.11.1-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 fichiers sont tout de même publiés et la note de version le signale ; seul l'éditeur Linux
 est indispensable, car c'est lui qui assemble les fichiers.
 

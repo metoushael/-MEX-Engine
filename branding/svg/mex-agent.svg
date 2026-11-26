@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="MEX Agent">
+  <title>MEX Agent</title>
+  <defs>
+    <linearGradient id="corps" gradientUnits="userSpaceOnUse" x1="44" y1="4" x2="84" y2="124">
+      <stop offset="0" stop-color="#FFA24D"/>
+      <stop offset="1" stop-color="#D9682B"/>
+    </linearGradient>
+  </defs>
+  <!-- Antenne -->
+  <rect x="60.5" y="14" width="7" height="20" rx="3.5" fill="url(#corps)"/>
+  <circle cx="64" cy="12" r="8" fill="#FFB067"/>
+  <!-- Oreilles -->
+  <rect x="2" y="54" width="12" height="22" rx="4" fill="url(#corps)"/>
+  <rect x="114" y="54" width="12" height="22" rx="4" fill="url(#corps)"/>
+  <!-- Tête : une bulle de dialogue, avec sa pointe -->
+  <path d="M30 30h68a20 20 0 0 1 20 20v30a20 20 0 0 1-20 20H60L32 124l-1.2-24H30a20 20 0 0 1-20-20V50a20 20 0 0 1 20-20z" fill="url(#corps)"/>
+  <!-- Visage -->
+  <rect x="34" y="48" width="14" height="26" rx="7" fill="#1B1E2E"/>
+  <rect x="80" y="48" width="14" height="26" rx="7" fill="#1B1E2E"/>
+  <path d="M52 80c6 8 18 8 24 0" fill="none" stroke="#1B1E2E" stroke-width="5" stroke-linecap="round"/>
+</svg>

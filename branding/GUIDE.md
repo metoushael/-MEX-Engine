@@ -49,3 +49,8 @@ Ne pas étirer ou écraser · ne pas changer les couleurs hors palette · ne pas
 ## 9. Limites à connaître
 - Aucune recherche d'antériorité n'a été faite : avant tout dépôt de marque, vérifiez dans les bases de marques et par recherche d'image inversée.
 - Les fichiers PDF, AI et EPS ne sont pas fournis ; les SVG sont les fichiers maîtres.
+
+## MEX Agent
+- **Emblème** : un robot de conversation. Sa tête est une bulle de dialogue avec sa pointe, surmontée d'une antenne ; deux yeux et un sourire.
+- **Fichiers** : `svg/mex-agent.svg`, `png/mex-agent.png` (512 px, fond transparent).
+- **Dans l'éditeur** : l'emblème est dessiné par le programme (`editor/editor_agent_ui.cpp`, `draw_orb`), dans la couleur d'accent du thème ; il cligne des yeux et s'anime quand l'agent travaille. Les boutons et onglets utilisent les icônes Lucide `bot-message-square` et `bot`.

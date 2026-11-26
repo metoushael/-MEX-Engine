@@ -12,11 +12,20 @@
 # Linux est indispensable, car c'est lui qui assemble les fichiers.
 #
 # Fichiers produits :
-#   mex-<libellé>-windows-x86_64.exe          l'éditeur seul, avec tous les modèles d'export
+#   mex-<libellé>-windows-x86_64.exe          l'éditeur en un seul fichier, modèles incorporés
 #   mex-<libellé>-windows-x86_64.console.exe  sa version console (à garder à côté du premier)
-#   mex-<libellé>-linux-x86_64                l'éditeur seul, avec tous les modèles d'export
-#   mex-<libellé>-macos-universal.tar.gz      l'éditeur et les modèles (un exécutable signé
-#                                             ne peut rien recevoir à sa suite)
+#   mex-<libellé>-linux-x86_64                l'éditeur en un seul fichier, modèles incorporés
+#   mex-<libellé>-windows-x86_64.zip          archive complète pour Windows
+#   mex-<libellé>-linux-x86_64.tar.gz         archive complète pour Linux
+#   mex-<libellé>-macos-universal.tar.gz      archive complète pour macOS (un exécutable signé
+#                                             ne peut rien recevoir à sa suite : pas de
+#                                             fichier unique pour ce système)
+#   mex-<libellé>-web-wasm32.zip              le modèle d'export web seul
+#
+# Une archive complète contient tout ce que la compilation a produit pour ce système
+# (éditeur, version console, lanceur de jeu mex-jeu) et, dans « templates », les modèles
+# d'export de TOUS les systèmes : l'éditeur les trouve là, sans installation.
+#
 #   mex-<libellé>-modeles-export.tpz          le paquet des modèles d'export (archive ZIP), pour
 #                                             un éditeur sans modèles incorporés :
 #                                             « Projet > Modèles d'exportation... »
@@ -88,28 +97,60 @@ if [ -f "$windows/mex.exe" ]; then
 	fi
 fi
 
-# macOS : l'éditeur est signé, on ne peut rien lui ajouter. Une petite archive : l'éditeur,
-# son modèle, et ceux des autres systèmes dans « templates ».
-if [ -f "$macos/mex" ]; then
-	paquet="mex-$libelle-macos-universal"
+# Archives complètes : pour chaque système, tout ce que sa compilation a produit, plus les
+# modèles d'export de tous les systèmes dans « templates ».
+#   archive_complete <système> <dossier des binaires> <zip|tar>
+archive_complete() {
+	local systeme=$1 source=$2 format=$3
+	local paquet="mex-$libelle-$systeme"
+	local travail
 	travail=$(mktemp -d)
-	mkdir -p "$travail/$paquet"
-	cp "$macos/mex" "$travail/$paquet/"
-	[ -f "$macos/mex-jeu" ] && cp "$macos/mex-jeu" "$travail/$paquet/"
-	if [ -f "$windows/mex-jeu.exe" ]; then
-		mkdir -p "$travail/$paquet/templates/windows-x86_64"
-		cp "$windows/mex-jeu.exe" "$travail/$paquet/templates/windows-x86_64/"
+	mkdir -p "$travail/$paquet/templates"
+	# Les exécutables du système : mex, mex-jeu, mex.console.exe...
+	cp "$source"/mex* "$travail/$paquet/"
+	local modele identifiant fichier
+	for modele in "${modeles[@]}"; do
+		identifiant=${modele%%=*}
+		fichier=${modele#*=}
+		mkdir -p "$travail/$paquet/templates/$identifiant"
+		cp "$fichier" "$travail/$paquet/templates/$identifiant/"
+	done
+	cp "$version_modeles" "$travail/$paquet/templates/version.txt"
+	chmod 644 "$travail/$paquet/templates/version.txt"
+	{
+		echo "MEX $(cat "$version_modeles") - $systeme"
+		echo
+		echo "Lancez « mex » : c'est l'éditeur. « mex-jeu » lance un jeu sans l'éditeur"
+		echo "(mex-jeu --path <dossier du projet>)."
+		echo
+		echo "Le dossier « templates » contient les modèles d'export de tous les systèmes :"
+		for modele in "${modeles[@]}"; do
+			echo "  - ${modele%%=*}"
+		done
+		echo "Gardez-le à côté de l'éditeur : « Projet > Exporter le jeu... » s'en sert."
+		echo
+		echo "Licences des composants utilisés : mex --licences"
+	} > "$travail/$paquet/LISEZMOI.txt"
+	rm -f "$sortie_absolue/$paquet.zip" "$sortie_absolue/$paquet.tar.gz"
+	if [ "$format" = zip ]; then
+		(cd "$travail" && zip -q -r -9 "$sortie_absolue/$paquet.zip" "$paquet")
+	else
+		tar -czf "$sortie_absolue/$paquet.tar.gz" -C "$travail" "$paquet"
 	fi
-	if [ -f "$linux/mex-jeu" ]; then
-		mkdir -p "$travail/$paquet/templates/linux-x86_64"
-		cp "$linux/mex-jeu" "$travail/$paquet/templates/linux-x86_64/"
-	fi
-	if [ -f "$web/mex-jeu.js" ]; then
-		mkdir -p "$travail/$paquet/templates/web-wasm32"
-		cp "$web/mex-jeu.js" "$travail/$paquet/templates/web-wasm32/"
-	fi
-	tar -czf "$sortie/$paquet.tar.gz" -C "$travail" "$paquet"
 	rm -rf "$travail"
+}
+version_modeles=$(mktemp)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy "$linux/mex" --version | tail -n 1 > "$version_modeles"
+[ -f "$windows/mex.exe" ] && archive_complete windows-x86_64 "$windows" zip
+archive_complete linux-x86_64 "$linux" tar
+# macOS : l'éditeur est signé, on ne peut rien lui ajouter ; l'archive est sa seule forme.
+[ -f "$macos/mex" ] && archive_complete macos-universal "$macos" tar
+rm -f "$version_modeles"
+
+# Web : ce n'est pas un éditeur, seulement le modèle d'export.
+if [ -f "$web/mex-jeu.js" ]; then
+	rm -f "$sortie_absolue/mex-$libelle-web-wasm32.zip"
+	(cd "$web" && zip -q -9 "$sortie_absolue/mex-$libelle-web-wasm32.zip" mex-jeu.js)
 fi
 
 # Projets d'exemple, à part : l'éditeur n'en a pas besoin pour fonctionner.

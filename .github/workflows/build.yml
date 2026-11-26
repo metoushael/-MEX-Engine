@@ -312,6 +312,15 @@ jobs:
           if [ -f binaires/binaires-windows-x86_64/mex-jeu.exe ]; then systemes="$systemes windows"; fi
           bash tools/essai_fichier_unique.sh "publication/mex-$LABEL-linux-x86_64" $systemes
 
+      # L'archive complète : l'éditeur sans modèles incorporés les trouve dans « templates ».
+      - name: Essai de l'archive complète
+        run: |
+          systemes=""
+          if [ -f binaires/binaires-web-wasm32/mex-jeu.js ]; then systemes="$systemes web"; fi
+          if [ -f binaires/binaires-windows-x86_64/mex-jeu.exe ]; then systemes="$systemes windows"; fi
+          if [ -f binaires/binaires-macos-universal/mex-jeu ]; then systemes="$systemes macos"; fi
+          bash tools/essai_archive_complete.sh "publication/mex-$LABEL-linux-x86_64.tar.gz" $systemes
+
       - name: Envoi des fichiers à publier
         uses: actions/upload-artifact@v7
         with:
@@ -371,8 +380,27 @@ jobs:
             echo "| Windows, version console (facultative) | \`mex-$LABEL-windows-x86_64.console.exe\`, à placer à côté du premier |"
             echo "| Linux x86_64 (glibc 2.39 ou plus récente : Ubuntu 24.04, Debian 13, Fedora 40...) | \`mex-$LABEL-linux-x86_64\` : un seul fichier |"
             echo "| macOS 11 ou plus récent (Intel et Apple Silicon) | \`mex-$LABEL-macos-universal.tar.gz\` |"
-            echo "| Modèles d'export seuls (facultatifs : l'éditeur les contient déjà) | \`mex-$LABEL-modeles-export.tpz\`, à installer par *Projet > Modèles d'exportation...* |"
-            echo "| Projets d'exemple (facultatifs) | \`mex-$LABEL-exemples.zip\` |"
+            echo
+            echo "Tous ces fichiers contiennent les modèles d'export de tous les systèmes (Windows, Linux, macOS, web)."
+            echo
+            echo "## Archives complètes"
+            echo
+            echo "Tout ce que la compilation a produit pour un système (éditeur, version console, lanceur \`mex-jeu\`), avec les modèles d'export de **tous** les systèmes dans le dossier \`templates\`."
+            echo
+            echo "| Système | Fichier |"
+            echo "| --- | --- |"
+            echo "| Windows | \`mex-$LABEL-windows-x86_64.zip\` |"
+            echo "| Linux | \`mex-$LABEL-linux-x86_64.tar.gz\` |"
+            echo "| macOS | \`mex-$LABEL-macos-universal.tar.gz\` |"
+            echo "| Web (modèle d'export seul) | \`mex-$LABEL-web-wasm32.zip\` |"
+            echo
+            echo "## Autres fichiers"
+            echo
+            echo "| Contenu | Fichier |"
+            echo "| --- | --- |"
+            echo "| Paquet des modèles d'export de tous les systèmes | \`mex-$LABEL-modeles-export.tpz\`, à installer par *Projet > Modèles d'exportation...* |"
+            echo "| Projets d'exemple | \`mex-$LABEL-exemples.zip\` |"
+            echo "| Sommes de contrôle | \`SHA256SUMS.txt\` |"
             echo
             echo "**Windows :** téléchargez le fichier \`.exe\` et lancez-le. Il contient l'éditeur et les modèles d'export (Windows, Linux, macOS, web)."
             echo
@@ -388,6 +416,7 @@ jobs:
             [ -f "mex-$LABEL-windows-x86_64.exe" ] || missing="$missing Windows"
             [ -f "mex-$LABEL-linux-x86_64" ] || missing="$missing Linux"
             [ -f "mex-$LABEL-macos-universal.tar.gz" ] || missing="$missing macOS"
+            [ -f "mex-$LABEL-web-wasm32.zip" ] || missing="$missing web"
             if [ -n "$missing" ]; then
               echo
               echo "> **Attention :** la compilation a échoué pour :$missing. Ces fichiers manquent dans cette publication."

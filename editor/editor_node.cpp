@@ -610,7 +610,7 @@ void EditorNode::_build_default_layout(unsigned int p_dockspace_id) {
 	ImGui::DockBuilderDockWindow(ICON_DOCK_SCENE "  Scène###SceneDock", left);
 	ImGui::DockBuilderDockWindow(ICON_DOCK_FILES "  Fichiers###FilesDock", left_bottom);
 	ImGui::DockBuilderDockWindow(ICON_DOCK_INSPECTOR "  Inspecteur###Inspector", right);
-	ImGui::DockBuilderDockWindow(ICON_SPARKLES "  MEX Agent###Agent", right);
+	ImGui::DockBuilderDockWindow(ICON_CHATBOT "  MEX Agent###Agent", right);
 	// Le dernier onglet ancré est celui affiché au départ : la sortie.
 	ImGui::DockBuilderDockWindow(ICON_DOCK_ANIMATION "  Animation###Animation", bottom);
 	ImGui::DockBuilderDockWindow(ICON_SIGNAL "  Moniteur###Monitor", bottom);
@@ -795,7 +795,7 @@ void EditorNode::_draw_menus() {
 	if (ImGui::BeginMenu("Affichage")) {
 		{
 			bool agent_open = agent->is_open();
-			if (ImGui::MenuItem(ICON_SPARKLES "  MEX Agent", nullptr, &agent_open)) {
+			if (ImGui::MenuItem(ICON_CHATBOT "  MEX Agent", nullptr, &agent_open)) {
 				agent->set_open(agent_open);
 				if (agent_open) {
 					agent->focus();
@@ -918,8 +918,8 @@ void EditorNode::_draw_toolbar(float p_logo_end) {
 	const float play_x = right_edge - play_w - ES(8);
 
 	// --- Espaces de travail (au centre) : avec leur nom, ou réduits à leur icône ---
-	const char *workspaces[WORKSPACE_COUNT] = { ICON_VIEW_2D "  2D###ws_2d", ICON_VIEW_3D "  3D###ws_3d", ICON_DOCK_SCRIPT "  Script###ws_script", ICON_DOCK_GAME "  Jeu###ws_game", ICON_SPARKLES "  Agent###ws_agent" };
-	const char *workspace_icons[WORKSPACE_COUNT] = { ICON_VIEW_2D "###ws_2d", ICON_VIEW_3D "###ws_3d", ICON_DOCK_SCRIPT "###ws_script", ICON_DOCK_GAME "###ws_game", ICON_SPARKLES "###ws_agent" };
+	const char *workspaces[WORKSPACE_COUNT] = { ICON_VIEW_2D "  2D###ws_2d", ICON_VIEW_3D "  3D###ws_3d", ICON_DOCK_SCRIPT "  Script###ws_script", ICON_DOCK_GAME "  Jeu###ws_game", ICON_CHATBOT "  Agent###ws_agent" };
+	const char *workspace_icons[WORKSPACE_COUNT] = { ICON_VIEW_2D "###ws_2d", ICON_VIEW_3D "###ws_3d", ICON_DOCK_SCRIPT "###ws_script", ICON_DOCK_GAME "###ws_game", ICON_CHATBOT "###ws_agent" };
 	const char *workspace_tips[WORKSPACE_COUNT] = { "Vue 2D : canvas, sprites, interface", "Vue 3D : maillages, lumières, caméras", "Éditeur de script", "Le jeu en cours d'exécution", "Mode Agent : décrivez votre jeu, MEX Agent le construit (Ctrl+Maj+A)" };
 	const float slot_x0 = menus_end + ES(16);
 	const float slot_x1 = play_x - ES(8);
