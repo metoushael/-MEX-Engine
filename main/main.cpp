@@ -70,6 +70,7 @@ struct CommandLine {
 	bool hidden = false;
 	String export_preset; // --export : nom du préréglage, ou « * »
 	std::vector<String> embed_templates; // --incorporer-modeles <sortie> <système>=<fichier>...
+	String install_templates; // --installer-modeles <paquet.tpz>
 	int quit_after = -1; // nombre d'images avant de quitter (tests)
 	String screenshot;
 };
@@ -86,6 +87,7 @@ void print_help() {
 	print_line("  --hidden              N'affiche pas la fenêtre.");
 	print_line("  --export <préréglage> Exporte le projet (--path) avec ce préréglage d'export_presets.cfg,");
 	print_line("                        sans ouvrir de fenêtre. « * » : tous les préréglages.");
+	print_line("  --installer-modeles <paquet.tpz>   Installer un paquet de modèles d'exportation.");
 	print_line("  --incorporer-modeles <sortie> <système>=<mex-jeu> [...]");
 	print_line("                        Écrit une copie de l'éditeur qui contient ces modèles d'export");
 	print_line("                        (windows-x86_64, linux-x86_64, macos-universal, web-wasm32) : un seul");
@@ -121,6 +123,10 @@ bool parse_command_line(int p_argc, char **p_argv, CommandLine &r_cmd) {
 			r_cmd.show_licences = true;
 		} else if (arg == "--hidden") {
 			r_cmd.hidden = true;
+		} else if (arg == "--installer-modeles") {
+			if (!next(r_cmd.install_templates)) {
+				return false;
+			}
 		} else if (arg == "--incorporer-modeles") {
 			// Tous les arguments suivants : le fichier produit, puis les modèles.
 			while (i + 1 < p_argc) {
@@ -473,6 +479,25 @@ int Main::run(int p_argc, char **p_argv) {
 
 	register_core_types();
 
+	if (!cmd.install_templates.empty()) {
+		int result = 1;
+#ifdef TOOLS_ENABLED
+		String message;
+		if (EditorExport::install_template_package(cmd.install_templates, message)) {
+			print_line(message);
+			for (const EditorExport::TemplateInfo &info : EditorExport::get_template_report()) {
+				print_line("  " + info.platform + " : " + info.origin + (info.path.empty() ? String() : " (" + info.path + ")"));
+			}
+			result = 0;
+		} else {
+			print_error(message);
+		}
+#else
+		print_error("--installer-modeles : cet exécutable ne contient pas l'éditeur.");
+#endif
+		unregister_core_types();
+		return result;
+	}
 	if (!cmd.embed_templates.empty()) {
 		int result = 1;
 #ifdef TOOLS_ENABLED

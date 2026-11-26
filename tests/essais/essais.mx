@@ -824,6 +824,19 @@ func essai_tactile():
 	var relu = JSON.parse_string(texte)
 	verifier("JSON : écriture puis relecture", relu["score"] == 12 and relu["noms"][1] == "é\n\"b\"" and relu["ok"] == true and relu["vide"] == null and relu["pi"] == 3.5 and JSON.parse_string("[1, 2,") == null and JSON.parse_string("{\"a\": \"\\u00e9\\ud83d\\ude00\"}")["a"] == "é😀")
 	verifier("chargement automatique : nœud global gardé à la racine", Compteur.valeur == 41 and Compteur.suivant() == 42 and Compteur.get_path() == "/root/Compteur")
+	# Texte : un caractère absent de l'atlas de la police a une largeur nulle.
+	var etiquette = Label.new()
+	add_child(etiquette)
+	etiquette.text = "abcdef"
+	var largeur_latine = etiquette.get_minimum_size().x
+	etiquette.text = "Привет"
+	var largeur_cyrillique = etiquette.get_minimum_size().x
+	etiquette.text = "Ελληνι"
+	var largeur_grecque = etiquette.get_minimum_size().x
+	etiquette.text = "ếệơưẫỡ"
+	var largeur_vietnamienne = etiquette.get_minimum_size().x
+	etiquette.queue_free()
+	verifier("texte : le grec, le cyrillique et le vietnamien ont leurs caractères", largeur_latine > 10 and largeur_cyrillique > largeur_latine * 0.7 and largeur_grecque > largeur_latine * 0.7 and largeur_vietnamienne > largeur_latine * 0.7)
 
 func essai_tactile_fin():
 	doigt(0, Vector2(720, 320), false)

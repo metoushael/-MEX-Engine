@@ -593,6 +593,8 @@ void EditorNode::_draw_ui() {
 	_draw_game_dock();
 	_draw_viewport_dock();
 	_draw_export_dialog();
+	_draw_export_templates_dialog();
+	_draw_doc();
 	_draw_dialogs();
 }
 
@@ -643,12 +645,21 @@ void EditorNode::_handle_shortcuts() {
 	if (ImGui::Shortcut(ImGuiKey_F6, global)) {
 		_defer([this]() { _play_current(); });
 	}
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_A, global)) {
+		_defer([this]() { _switch_workspace(WORKSPACE_AGENT); });
+	}
+	if (ImGui::Shortcut(ImGuiKey_F1, global)) {
+		_defer([this]() { _open_doc(_get_selected() ? _get_selected()->get_class() : String()); });
+	}
 	if (ImGui::Shortcut(ImGuiKey_F8, global)) {
 		_defer([this]() { _stop(); });
 	}
 }
 
 void EditorNode::_switch_workspace(int p_workspace) {
+	if (p_workspace != WORKSPACE_AGENT) {
+		agent->leave_agent_mode();
+	}
 	switch (p_workspace) {
 		case WORKSPACE_2D:
 		case WORKSPACE_3D:
@@ -662,6 +673,9 @@ void EditorNode::_switch_workspace(int p_workspace) {
 			break;
 		case WORKSPACE_GAME:
 			focus_game = true;
+			break;
+		case WORKSPACE_AGENT:
+			agent->enter_agent_mode();
 			break;
 	}
 }
@@ -764,6 +778,10 @@ void EditorNode::_draw_menus() {
 			export_open = true;
 			export_message.clear();
 		}
+		if (ImGui::MenuItem(ICON_DOWNLOAD "  Modèles d'exportation...")) {
+			templates_open = true;
+			templates_message.clear();
+		}
 		ImGui::Separator();
 		if (ImGui::MenuItem(ICON_REFRESH "  Actualiser les fichiers")) {
 			fs_dirty = true;
@@ -843,6 +861,10 @@ void EditorNode::_draw_menus() {
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Aide")) {
+		if (ImGui::MenuItem(ICON_HELP "  Référence des classes", "F1")) {
+			// Ouverte sur la classe du nœud sélectionné, s'il y en a un.
+			_open_doc(_get_selected() ? _get_selected()->get_class() : String());
+		}
 		if (ImGui::MenuItem(ICON_INFO "  À propos de MEX")) {
 			about_open = true;
 		}
@@ -896,9 +918,9 @@ void EditorNode::_draw_toolbar(float p_logo_end) {
 	const float play_x = right_edge - play_w - ES(8);
 
 	// --- Espaces de travail (au centre) : avec leur nom, ou réduits à leur icône ---
-	const char *workspaces[WORKSPACE_COUNT] = { ICON_VIEW_2D "  2D###ws_2d", ICON_VIEW_3D "  3D###ws_3d", ICON_DOCK_SCRIPT "  Script###ws_script", ICON_DOCK_GAME "  Jeu###ws_game" };
-	const char *workspace_icons[WORKSPACE_COUNT] = { ICON_VIEW_2D "###ws_2d", ICON_VIEW_3D "###ws_3d", ICON_DOCK_SCRIPT "###ws_script", ICON_DOCK_GAME "###ws_game" };
-	const char *workspace_tips[WORKSPACE_COUNT] = { "Vue 2D : canvas, sprites, interface", "Vue 3D : maillages, lumières, caméras", "Éditeur de script", "Le jeu en cours d'exécution" };
+	const char *workspaces[WORKSPACE_COUNT] = { ICON_VIEW_2D "  2D###ws_2d", ICON_VIEW_3D "  3D###ws_3d", ICON_DOCK_SCRIPT "  Script###ws_script", ICON_DOCK_GAME "  Jeu###ws_game", ICON_SPARKLES "  Agent###ws_agent" };
+	const char *workspace_icons[WORKSPACE_COUNT] = { ICON_VIEW_2D "###ws_2d", ICON_VIEW_3D "###ws_3d", ICON_DOCK_SCRIPT "###ws_script", ICON_DOCK_GAME "###ws_game", ICON_SPARKLES "###ws_agent" };
+	const char *workspace_tips[WORKSPACE_COUNT] = { "Vue 2D : canvas, sprites, interface", "Vue 3D : maillages, lumières, caméras", "Éditeur de script", "Le jeu en cours d'exécution", "Mode Agent : décrivez votre jeu, MEX Agent le construit (Ctrl+Maj+A)" };
 	const float slot_x0 = menus_end + ES(16);
 	const float slot_x1 = play_x - ES(8);
 	float workspaces_w = ES(2) * (WORKSPACE_COUNT - 1);
@@ -920,7 +942,7 @@ void EditorNode::_draw_toolbar(float p_logo_end) {
 		float x = workspaces_x;
 		for (int i = 0; i < WORKSPACE_COUNT; i++) {
 			ImGui::SetCursorPos(ImVec2(x, y));
-			const bool active = workspace_active == i;
+			const bool active = (agent->is_agent_mode() && agent->is_open() ? (int)WORKSPACE_AGENT : workspace_active) == i;
 			ImGui::PushStyleColor(ImGuiCol_Button, active ? col(palette.accent, 0.18f) : ImVec4(0, 0, 0, 0));
 			ImGui::PushStyleColor(ImGuiCol_Text, col(active ? palette.accent : palette.text));
 			const bool pressed = workspace_icons_only ? ImGui::Button(workspace_icons[i], ImVec2(icon_w, button_h)) : ImGui::Button(workspaces[i]);

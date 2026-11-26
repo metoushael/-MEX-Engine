@@ -109,13 +109,10 @@ static bool _opengl_is_reliable(SDL_Renderer *p_renderer, String &r_details, Str
 	}
 	int major = 0, minor = 0;
 	sscanf(version, "%d.%d", &major, &minor);
-#if defined(_WIN32)
-	// Sous Windows, Direct3D est toujours là et sûr : on n'accepte qu'un OpenGL récent. Les
-	// pilotes OpenGL des anciennes puces (OpenGL 2.x et 3.0 à 3.2) y sont trop souvent fautifs.
-	const int need_major = 3, need_minor = 3;
-#else
+	// OpenGL 2.1 suffit au rendu 3D du moteur. Jusqu'à la version 0.10, Windows exigeait
+	// OpenGL 3.3 : des machines dont la 3D fonctionnait la perdaient. L'âge du pilote ne dit
+	// pas s'il dessine juste : c'est l'essai de dessin plus bas qui en décide.
 	const int need_major = 2, need_minor = 1;
-#endif
 	if (major < need_major || (major == need_major && minor < need_minor)) {
 		char text[96];
 		snprintf(text, sizeof(text), "OpenGL %d.%d est trop ancien (%d.%d au moins)", major, minor, need_major, need_minor);
@@ -124,6 +121,74 @@ static bool _opengl_is_reliable(SDL_Renderer *p_renderer, String &r_details, Str
 	}
 	if (!(info.flags & SDL_RENDERER_TARGETTEXTURE)) {
 		r_reason = "le pilote OpenGL ne sait pas dessiner dans une texture";
+		return false;
+	}
+	// Essai de dessin : un fond, un rectangle, un triangle et une petite image sont dessinés
+	// dans une texture, puis relus. Un pilote fautif (image blanche, décalée, couleurs
+	// fausses) est repéré par ce qu'il affiche vraiment.
+	if (SDL_getenv("MEX_GL_SELFTEST_FAIL")) {
+		r_reason = "l'essai de dessin a échoué (échec simulé pour les tests)";
+		return false;
+	}
+	const int size = 64;
+	SDL_Texture *target = SDL_CreateTexture(p_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, size, size);
+	if (!target || SDL_SetRenderTarget(p_renderer, target) != 0) {
+		if (target) {
+			SDL_DestroyTexture(target);
+		}
+		r_reason = "le pilote OpenGL ne sait pas dessiner dans une texture";
+		return false;
+	}
+	SDL_SetRenderDrawBlendMode(p_renderer, SDL_BLENDMODE_NONE);
+	SDL_SetRenderDrawColor(p_renderer, 20, 40, 200, 255);
+	SDL_RenderClear(p_renderer);
+	SDL_SetRenderDrawColor(p_renderer, 220, 30, 30, 255);
+	const SDL_Rect rect = { 0, 0, size / 2, size / 2 };
+	SDL_RenderFillRect(p_renderer, &rect);
+	// Triangle coloré (le chemin qu'emprunte toute l'interface de l'éditeur).
+	SDL_Vertex triangle[3];
+	SDL_zero(triangle);
+	const SDL_Color green = { 30, 200, 60, 255 };
+	triangle[0].position = { (float)size / 2, 0.0f };
+	triangle[1].position = { (float)size, 0.0f };
+	triangle[2].position = { (float)size, (float)size / 2 };
+	for (SDL_Vertex &vertex : triangle) {
+		vertex.color = green;
+	}
+	SDL_RenderGeometry(p_renderer, nullptr, triangle, 3, nullptr, 0);
+	// Image de 2 x 2 pixels étirée dans le quart en bas à droite.
+	const Uint32 texels[4] = { 0xFFFFFF00u, 0xFFFFFF00u, 0xFFFFFF00u, 0xFFFFFF00u }; // jaune
+	SDL_Texture *image = SDL_CreateTexture(p_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, 2, 2);
+	bool drawn = image != nullptr;
+	if (image) {
+		SDL_UpdateTexture(image, nullptr, texels, 2 * sizeof(Uint32));
+		SDL_SetTextureBlendMode(image, SDL_BLENDMODE_NONE);
+		const SDL_Rect corner = { size / 2, size / 2, size / 2, size / 2 };
+		drawn = SDL_RenderCopy(p_renderer, image, nullptr, &corner) == 0;
+	}
+	std::vector<Uint32> pixels((size_t)size * size, 0);
+	const bool read = SDL_RenderReadPixels(p_renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, pixels.data(), size * (int)sizeof(Uint32)) == 0;
+	SDL_SetRenderTarget(p_renderer, nullptr);
+	if (image) {
+		SDL_DestroyTexture(image);
+	}
+	SDL_DestroyTexture(target);
+	SDL_SetRenderDrawColor(p_renderer, 0, 0, 0, 255);
+	const auto matches = [&](int p_x, int p_y, int p_r, int p_g, int p_b) {
+		const Uint32 pixel = pixels[(size_t)p_y * size + p_x];
+		const int r = (pixel >> 16) & 0xff, g = (pixel >> 8) & 0xff, b = pixel & 0xff;
+		return abs(r - p_r) <= 12 && abs(g - p_g) <= 12 && abs(b - p_b) <= 12;
+	};
+	if (!drawn || !read) {
+		r_reason = "l'essai de dessin n'a pas pu être fait (dessin ou relecture refusés par le pilote)";
+		return false;
+	}
+	// Chaque point est pris loin des bords de sa zone ; l'image peut être relue de haut en bas
+	// ou de bas en haut selon le pilote : les deux sens sont acceptés.
+	const bool upright = matches(8, 8, 220, 30, 30) && matches(56, 8, 30, 200, 60) && matches(8, 56, 20, 40, 200) && matches(56, 56, 255, 255, 0);
+	const bool flipped = matches(8, 56, 220, 30, 30) && matches(56, 56, 30, 200, 60) && matches(8, 8, 20, 40, 200) && matches(56, 8, 255, 255, 0);
+	if (!upright && !flipped) {
+		r_reason = "le pilote OpenGL dessine une image fausse (essai de dessin : couleurs ou positions inattendues)";
 		return false;
 	}
 	return true;

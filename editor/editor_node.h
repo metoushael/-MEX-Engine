@@ -160,6 +160,7 @@ private:
 		WORKSPACE_3D,
 		WORKSPACE_SCRIPT,
 		WORKSPACE_GAME,
+		WORKSPACE_AGENT,
 		WORKSPACE_COUNT,
 	};
 	int workspace_active = WORKSPACE_2D;
@@ -625,6 +626,17 @@ private:
 	String export_message;
 	bool export_failed = false;
 	void _draw_export_dialog();
+	void _draw_export_templates_dialog();
+	// Référence des classes (documentation intégrée).
+	void _draw_doc();
+	void _open_doc(const String &p_class = String());
+	bool doc_open = false;
+	bool doc_focus = false;
+	String doc_class;
+	String doc_filter;
+	bool templates_open = false;
+	bool templates_ok = false;
+	String templates_message;
 	// Écrit dans p_dir l'exécutable et l'archive .pck du projet.
 
 	// --- Éditeur de script ----------------------------------------------------------------

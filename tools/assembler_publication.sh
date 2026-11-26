@@ -17,6 +17,9 @@
 #   mex-<libellé>-linux-x86_64                l'éditeur seul, avec tous les modèles d'export
 #   mex-<libellé>-macos-universal.tar.gz      l'éditeur et les modèles (un exécutable signé
 #                                             ne peut rien recevoir à sa suite)
+#   mex-<libellé>-modeles-export.tpz          le paquet des modèles d'export (archive ZIP), pour
+#                                             un éditeur sans modèles incorporés :
+#                                             « Projet > Modèles d'exportation... »
 #   mex-<libellé>-exemples.zip                les projets d'exemple
 set -euo pipefail
 
@@ -57,6 +60,21 @@ fi
 echo "Modèles incorporés : ${modeles[*]}"
 
 mkdir -p "$sortie"
+
+# Paquet des modèles d'export : templates/version.txt et templates/<système>/<fichier>.
+travail_modeles=$(mktemp -d)
+mkdir -p "$travail_modeles/templates"
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy "$linux/mex" --version | tail -n 1 > "$travail_modeles/templates/version.txt"
+for modele in "${modeles[@]}"; do
+	identifiant=${modele%%=*}
+	fichier=${modele#*=}
+	mkdir -p "$travail_modeles/templates/$identifiant"
+	cp "$fichier" "$travail_modeles/templates/$identifiant/"
+done
+rm -f "$sortie/mex-$libelle-modeles-export.tpz"
+sortie_absolue=$(cd "$sortie" && pwd)
+(cd "$travail_modeles" && zip -q -r -9 "$sortie_absolue/mex-$libelle-modeles-export.tpz" templates)
+rm -rf "$travail_modeles"
 
 # Linux : un seul fichier.
 "$linux/mex" --incorporer-modeles "$sortie/mex-$libelle-linux-x86_64" "${modeles[@]}"

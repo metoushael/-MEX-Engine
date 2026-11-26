@@ -109,6 +109,8 @@ void EditorAgent::load_settings() {
 			settings.url = config.get_value(PROVIDERS[i].id, "adresse", Variant(String())).as_string();
 		}
 		max_tokens = (int)config.get_value("agent", "jetons_par_reponse", Variant(max_tokens)).as_int();
+		animations = config.get_value("agent", "animations", Variant(animations)).as_bool();
+		agent_mode = config.get_value("agent", "mode_agent", Variant(false)).as_bool();
 		ask_before_changes = config.get_value("agent", "demander_avant_de_modifier", Variant(ask_before_changes)).as_bool();
 		open = config.get_value("agent", "panneau_visible", Variant(open)).as_bool();
 	}
@@ -126,6 +128,9 @@ void EditorAgent::load_settings() {
 	if (const char *forced = SDL_getenv("MEX_AGENT_MODEL")) {
 		_settings().model = forced;
 	}
+	if (const char *forced = SDL_getenv("MEX_AGENT_ANIMATIONS")) {
+		animations_forced_off = forced[0] == '0';
+	}
 	if (const char *forced = SDL_getenv("MEX_AGENT_AUTO")) {
 		ask_before_changes = SDL_strcmp(forced, "1") != 0;
 	}
@@ -139,6 +144,8 @@ void EditorAgent::save_settings() const {
 	ConfigFile config;
 	config.set_value("agent", "fournisseur", Variant(String(PROVIDERS[provider_index].id)));
 	config.set_value("agent", "jetons_par_reponse", Variant(max_tokens));
+	config.set_value("agent", "animations", Variant(animations));
+	config.set_value("agent", "mode_agent", Variant(agent_mode));
 	config.set_value("agent", "demander_avant_de_modifier", Variant(ask_before_changes));
 	config.set_value("agent", "panneau_visible", Variant(open));
 	for (int i = 0; i < PROVIDER_COUNT; i++) {
@@ -998,298 +1005,4 @@ void EditorAgent::draw_connection_settings() {
 	if (changed) {
 		save_settings();
 	}
-}
-
-void EditorAgent::_draw_text(const String &p_text) {
-	// Texte avec retour à la ligne ; les blocs entre ``` sont en police à chasse fixe.
-	bool in_code = false;
-	size_t start = 0;
-	String block;
-	int code_index = 0;
-	const auto flush = [&]() {
-		if (block.empty()) {
-			return;
-		}
-		if (in_code) {
-			ImGui::PushID(code_index++);
-			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
-			if (ImGui::BeginChild("##code", ImVec2(-FLT_MIN, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_HorizontalScrollbar)) {
-				if (editor->font_mono) {
-					ImGui::PushFont(editor->font_mono, 0.0f);
-				}
-				ImGui::TextUnformatted(block.c_str(), block.c_str() + block.size());
-				if (editor->font_mono) {
-					ImGui::PopFont();
-				}
-			}
-			ImGui::EndChild();
-			ImGui::PopStyleColor();
-			ImGui::PopID();
-		} else {
-			ImGui::PushTextWrapPos(0.0f);
-			ImGui::TextUnformatted(block.c_str(), block.c_str() + block.size());
-			ImGui::PopTextWrapPos();
-		}
-		block.clear();
-	};
-	while (start <= p_text.size()) {
-		size_t end = p_text.find('\n', start);
-		if (end == String::npos) {
-			end = p_text.size();
-		}
-		const String line = p_text.substr(start, end - start);
-		if (str_begins_with(str_strip(line), "```")) {
-			if (!block.empty() && block.back() == '\n') {
-				block.pop_back();
-			}
-			flush();
-			in_code = !in_code;
-		} else {
-			block += line;
-			block += '\n';
-		}
-		start = end + 1;
-	}
-	if (!block.empty() && block.back() == '\n') {
-		block.pop_back();
-	}
-	flush();
-}
-
-void EditorAgent::_draw_message(Message &p_message, int p_index) {
-	ImGui::PushID(p_index);
-	const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-	if (p_message.kind == Message::USER) {
-		ImGui::Spacing();
-		ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), "Vous");
-		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
-		if (ImGui::BeginChild("##bulle", ImVec2(-FLT_MIN, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding)) {
-			_draw_text(p_message.text);
-		}
-		ImGui::EndChild();
-		ImGui::PopStyleColor();
-	} else if (p_message.kind == Message::NOTICE) {
-		ImGui::Spacing();
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.62f, 0.25f, 1.0f));
-		ImGui::PushTextWrapPos(0.0f);
-		ImGui::TextUnformatted((String(ICON_WARNING "  ") + p_message.text).c_str());
-		ImGui::PopTextWrapPos();
-		ImGui::PopStyleColor();
-	} else {
-		// Un seul en-tête pour une suite de réponses du modèle.
-		if (p_index == 0 || messages[(size_t)p_index - 1].kind != Message::ASSISTANT) {
-			ImGui::Spacing();
-			ImGui::TextColored(accent, ICON_SPARKLES "  MEX Agent");
-		}
-		if (!p_message.text.empty()) {
-			ImGui::BeginGroup();
-			_draw_text(p_message.text);
-			ImGui::EndGroup();
-			if (ImGui::BeginPopupContextItem("##copier")) {
-				if (ImGui::MenuItem(ICON_COPY "  Copier la réponse")) {
-					ImGui::SetClipboardText(p_message.text.c_str());
-				}
-				ImGui::EndPopup();
-			}
-		}
-		for (size_t i = 0; i < p_message.calls.size(); i++) {
-			ToolCall &call = p_message.calls[i];
-			ImGui::PushID((int)i);
-			const char *icon = call.state != ToolCall::DONE ? ICON_REFRESH : (call.is_error ? ICON_ERROR : ICON_CHECK);
-			const ImVec4 color = call.state != ToolCall::DONE ? ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) : (call.is_error ? ImVec4(0.92f, 0.36f, 0.33f, 1.0f) : ImVec4(0.38f, 0.78f, 0.45f, 1.0f));
-			ImGui::TextColored(color, "%s", icon);
-			ImGui::SameLine();
-			const String label = EditorAgentTools::describe(call) + "###appel";
-			if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth)) {
-				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-				ImGui::PushTextWrapPos(0.0f);
-				String details = JSON::stringify(Variant(call.arguments), "  ");
-				if (details.size() > 3000) {
-					details = details.substr(0, 3000) + "\n...";
-				}
-				ImGui::TextUnformatted(details.c_str());
-				if (call.state == ToolCall::DONE) {
-					String result = call.result;
-					if (result.size() > 3000) {
-						result = result.substr(0, 3000) + "\n...";
-					}
-					ImGui::Separator();
-					ImGui::TextUnformatted(result.c_str());
-				}
-				ImGui::PopTextWrapPos();
-				ImGui::PopStyleColor();
-				ImGui::TreePop();
-			}
-			if (call.state == ToolCall::NEEDS_APPROVAL) {
-				ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
-				if (ImGui::BeginChild("##accord", ImVec2(-FLT_MIN, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding)) {
-					ImGui::PushTextWrapPos(0.0f);
-					ImGui::TextUnformatted(EditorAgentTools::describe_change(call).c_str());
-					ImGui::PopTextWrapPos();
-					if (editor->_accent_button(ICON_CHECK "  Autoriser")) {
-						call.state = ToolCall::RUNNING;
-					}
-					ImGui::SameLine();
-					if (ImGui::Button("Refuser")) {
-						_finish_call(call, "L'utilisateur a refusé cette modification. Ne la retente pas telle quelle : demande-lui ce qu'il souhaite.", true);
-					}
-					ImGui::SameLine();
-					if (ImGui::GetContentRegionAvail().x < ImGui::CalcTextSize("Toujours autoriser").x + ImGui::GetStyle().FramePadding.x * 2.0f) {
-						ImGui::NewLine();
-					}
-					if (ImGui::Button("Toujours autoriser")) {
-						ask_before_changes = false;
-						save_settings();
-						call.state = ToolCall::RUNNING;
-					}
-					ImGui::SetItemTooltip("Ne plus demander : MEX Agent modifie le projet sans attendre.\nSe règle dans « Connexion ».");
-				}
-				ImGui::EndChild();
-				ImGui::PopStyleColor();
-			}
-			ImGui::PopID();
-		}
-	}
-	ImGui::PopID();
-}
-
-void EditorAgent::draw() {
-	_poll_job();
-	_process_tools();
-	if (!open) {
-		return;
-	}
-	if (want_focus) {
-		ImGui::SetNextWindowFocus();
-	}
-	ImGui::SetNextWindowSize(EditorUI::dialog_size(420, 600), ImGuiCond_FirstUseEver);
-	bool visible = open;
-	if (!ImGui::Begin(ICON_SPARKLES "  MEX Agent###Agent", &visible)) {
-		ImGui::End();
-		if (visible != open) {
-			open = visible;
-			save_settings();
-		}
-		want_focus = false;
-		return;
-	}
-	if (visible != open) {
-		open = visible;
-		save_settings();
-	}
-	_load_skills();
-	const Provider &provider = PROVIDERS[provider_index];
-	const String model = _effective_model(provider, _settings());
-
-	// Barre du haut : service et modèle, nouvelle conversation, annulation.
-	if (ImGui::Button(ICON_SETTINGS "  Connexion")) {
-		show_settings = !show_settings;
-	}
-	ImGui::SetItemTooltip("Fournisseur, clé d'API et modèle");
-	ImGui::SameLine();
-	ImGui::BeginDisabled(messages.empty());
-	if (ImGui::Button(ICON_PLUS "  Nouveau")) {
-		new_conversation();
-	}
-	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Commencer une nouvelle conversation");
-	ImGui::SameLine();
-	// Panneau étroit : le troisième bouton passe à la ligne plutôt que d'être coupé.
-	if (ImGui::GetContentRegionAvail().x < ImGui::CalcTextSize(ICON_REFRESH "  Annuler les changements").x + ImGui::GetStyle().FramePadding.x * 2.0f) {
-		ImGui::NewLine();
-	}
-	ImGui::BeginDisabled(originals.empty() || state != IDLE);
-	if (ImGui::Button(ICON_REFRESH "  Annuler les changements")) {
-		_revert_changes();
-	}
-	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Remettre les fichiers modifiés ou créés par MEX Agent\ndans leur état d'avant cette conversation (%d fichier(s))", (int)originals.size());
-	ImGui::TextDisabled("%s  ·  %s", provider.label, model.empty() ? "aucun modèle" : model.c_str());
-	if (show_settings) {
-		ImGui::Separator();
-		draw_connection_settings();
-		ImGui::Separator();
-	}
-
-	// Conversation.
-	const float footer = ImGui::GetFrameHeightWithSpacing() * 3.4f + (status.empty() ? 0.0f : ImGui::GetTextLineHeightWithSpacing());
-	if (ImGui::BeginChild("##conversation", ImVec2(0, -footer), ImGuiChildFlags_None)) {
-		if (messages.empty()) {
-			ImGui::Spacing();
-			ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_CheckMark), ICON_SPARKLES "  MEX Agent");
-			ImGui::PushTextWrapPos(0.0f);
-			ImGui::TextUnformatted("Décrivez ce que vous voulez créer ou corriger. MEX Agent lit le projet, écrit les scènes et les scripts, lance le jeu et corrige les erreurs qu'il voit dans la sortie.");
-			ImGui::Spacing();
-			ImGui::TextDisabled("Exemples");
-			ImGui::PopTextWrapPos();
-			static const char *const EXAMPLES[] = {
-				"Crée un petit jeu de plateforme : un personnage qui court et saute, trois plateformes et cinq pièces à ramasser.",
-				"Ajoute des commandes tactiles (stick et bouton de saut) à mon jeu.",
-				"Mon jeu affiche une erreur au lancement : trouve-la et corrige-la.",
-				"Ajoute un menu principal avec les boutons Jouer et Quitter.",
-			};
-			for (const char *example : EXAMPLES) {
-				ImGui::PushTextWrapPos(0.0f);
-				ImGui::Bullet();
-				if (ImGui::Selectable(example, false, ImGuiSelectableFlags_None, ImVec2(0, ImGui::CalcTextSize(example, nullptr, false, ImGui::GetContentRegionAvail().x - ES(4)).y))) {
-					prompt = example;
-				}
-				ImGui::PopTextWrapPos();
-			}
-			ImGui::Spacing();
-			ImGui::TextDisabled("Compétences (%d)", (int)skills.size());
-			for (const Skill &skill : skills) {
-				ImGui::BulletText("%s", skill.name.c_str());
-				ImGui::SetItemTooltip("%s\n(%s)", skill.description.c_str(), skill.origin.c_str());
-			}
-			ImGui::PushTextWrapPos(0.0f);
-			ImGui::TextDisabled("Ajoutez les vôtres : des fichiers .md dans le dossier « competences » du projet.");
-			ImGui::PopTextWrapPos();
-		}
-		for (size_t i = 0; i < messages.size(); i++) {
-			_draw_message(messages[i], (int)i);
-		}
-		if (scroll_to_end > 0) {
-			// Plusieurs images de suite : la hauteur d'un nouveau message n'est connue qu'après son premier dessin.
-			ImGui::SetScrollHereY(1.0f);
-			scroll_to_end--;
-		}
-	}
-	ImGui::EndChild();
-
-	if (!status.empty()) {
-		static const char *const SPINNER[] = { "   ", ".  ", ".. ", "..." };
-		ImGui::TextDisabled("%s %s", status.c_str(), SPINNER[(int)(ImGui::GetTime() * 3.0) % 4]);
-	}
-	// Saisie : Entrée envoie, Maj+Entrée va à la ligne.
-	const float button_width = ES(96);
-	const ImVec2 input_size(ImGui::GetContentRegionAvail().x - button_width - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFrameHeightWithSpacing() * 3.0f);
-	if (want_focus) {
-		ImGui::SetKeyboardFocusHere();
-		want_focus = false;
-	}
-	bool send = ImGui::InputTextMultiline("##demande", &prompt, input_size, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine);
-	if (ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Enter) && ImGui::GetIO().KeyShift) {
-		send = false;
-	}
-	ImGui::SameLine();
-	if (state == IDLE) {
-		ImGui::BeginDisabled(str_strip(prompt).empty());
-		if (editor->_accent_button(ICON_PLAY "  Envoyer", button_width)) {
-			send = true;
-		}
-		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("Entrée : envoyer. Ctrl+Entrée : aller à la ligne.");
-	} else {
-		send = false;
-		if (ImGui::Button(ICON_STOP "  Arrêter", ImVec2(button_width, 0))) {
-			stop();
-		}
-	}
-	if (send && state == IDLE && !str_strip(prompt).empty()) {
-		const String text = prompt;
-		prompt.clear();
-		submit(text);
-	}
-	ImGui::End();
 }

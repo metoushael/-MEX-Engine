@@ -96,12 +96,25 @@ const Font::SizeCache &Font::_get_cache(int p_size) const {
 	sc.descent = -descent * scale;
 	sc.line_height = (ascent - descent + line_gap) * scale;
 
-	// Latin de base + Latin-1 + Latin étendu A (œ, Œ...) + ponctuation typographique.
+	// Latin de base + Latin-1 + Latin étendu A (œ, Œ...) + ponctuation typographique, puis
+	// les autres alphabets que la police contient.
 	static const int extra_codepoints[] = { 0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2026, 0x20AC, 0x2190, 0x2191, 0x2192, 0x2193 };
 	const int extra_count = (int)(sizeof(extra_codepoints) / sizeof(int));
 	std::vector<stbtt_packedchar> chars_a(0x180 - 32);
 	std::vector<stbtt_packedchar> chars_b(extra_count);
-	stbtt_pack_range ranges[2];
+	// Autres alphabets, pour les seuls caractères que la police possède : latin étendu B et
+	// additionnel (vietnamien...), grec, cyrillique. Une police sans ces caractères ne paie rien.
+	std::vector<int> more_codepoints;
+	static const int more_blocks[][2] = { { 0x180, 0x24F }, { 0x370, 0x3FF }, { 0x400, 0x52F }, { 0x1E00, 0x1EFF } };
+	for (const auto &block : more_blocks) {
+		for (int codepoint = block[0]; codepoint <= block[1]; codepoint++) {
+			if (stbtt_FindGlyphIndex(&info, codepoint) != 0) {
+				more_codepoints.push_back(codepoint);
+			}
+		}
+	}
+	std::vector<stbtt_packedchar> chars_c(more_codepoints.size());
+	stbtt_pack_range ranges[3];
 	memset(ranges, 0, sizeof(ranges));
 	ranges[0].font_size = (float)p_size * oversampling;
 	ranges[0].first_unicode_codepoint_in_range = 32;
@@ -111,6 +124,11 @@ const Font::SizeCache &Font::_get_cache(int p_size) const {
 	ranges[1].array_of_unicode_codepoints = const_cast<int *>(extra_codepoints);
 	ranges[1].num_chars = extra_count;
 	ranges[1].chardata_for_range = chars_b.data();
+	ranges[2].font_size = (float)p_size * oversampling;
+	ranges[2].array_of_unicode_codepoints = more_codepoints.data();
+	ranges[2].num_chars = (int)more_codepoints.size();
+	ranges[2].chardata_for_range = chars_c.data();
+	const int range_count = more_codepoints.empty() ? 2 : 3;
 
 	int atlas_size = 256;
 	std::vector<uint8_t> bitmap;
@@ -119,7 +137,7 @@ const Font::SizeCache &Font::_get_cache(int p_size) const {
 		bitmap.assign((size_t)atlas_size * atlas_size, 0);
 		stbtt_pack_context ctx;
 		if (stbtt_PackBegin(&ctx, bitmap.data(), atlas_size, atlas_size, 0, 1, nullptr)) {
-			packed = stbtt_PackFontRanges(&ctx, data.data(), 0, ranges, 2) != 0;
+			packed = stbtt_PackFontRanges(&ctx, data.data(), 0, ranges, range_count) != 0;
 			stbtt_PackEnd(&ctx);
 		}
 		if (!packed) {
@@ -157,6 +175,9 @@ const Font::SizeCache &Font::_get_cache(int p_size) const {
 		if (stbtt_FindGlyphIndex(&info, extra_codepoints[i]) != 0) {
 			add_glyph((uint32_t)extra_codepoints[i], chars_b[i]);
 		}
+	}
+	for (size_t i = 0; i < more_codepoints.size(); i++) {
+		add_glyph((uint32_t)more_codepoints[i], chars_c[i]);
 	}
 	return sc;
 }

@@ -53,6 +53,9 @@ public:
 		String result;
 		bool is_error = false;
 		State state = WAITING;
+		// Interface : détails dépliés, instant de la première apparition.
+		bool ui_open = false;
+		double ui_born = -1.0;
 	};
 	struct Message {
 		enum Kind {
@@ -63,6 +66,9 @@ public:
 		Kind kind = USER;
 		String text;
 		std::vector<ToolCall> calls;
+		// Interface : instant de la première apparition, nombre d'octets du texte déjà écrits.
+		double ui_born = -1.0;
+		float ui_revealed = 0.0f;
 	};
 
 	explicit EditorAgent(EditorNode *p_editor);
@@ -80,6 +86,11 @@ public:
 	void set_open(bool p_open) { open = p_open; }
 	void focus() { open = true; want_focus = true; }
 	void open_settings() { open = true; want_focus = true; show_settings = true; }
+	// Mode Agent : la conversation occupe la vue centrale de l'éditeur (à la place des vues
+	// 2D, 3D, Script et Jeu) ; sinon elle reste un panneau latéral.
+	void enter_agent_mode();
+	void leave_agent_mode();
+	bool is_agent_mode() const { return agent_mode; }
 
 	static int get_provider_count();
 	static const Provider &get_provider(int p_index);
@@ -104,6 +115,17 @@ private:
 	bool show_settings = false;
 	bool show_key = false;
 	int scroll_to_end = 0; // images pendant lesquelles la conversation reste calée en bas
+	bool agent_mode = false; // la conversation recouvre la zone de travail
+	double mode_born = -1.0; // instant d'entrée dans le mode Agent
+	bool game_was_running = false;
+	int dock_request = 0; // 2 : ancrer avec l'inspecteur (sortie du mode Agent)
+	int dock_tries = 0;
+	bool stick_bottom = true; // la vue suit la fin de la conversation
+	bool animations = true;
+	bool animations_forced_off = false; // MEX_AGENT_ANIMATIONS=0
+	bool focus_input = false;
+	bool input_active = false;
+	double welcome_born = -1.0;
 	State state = IDLE;
 	int provider_index = 0;
 	std::map<String, ProviderSettings> provider_settings;
@@ -141,5 +163,6 @@ private:
 	void _revert_changes();
 	void _load_skills();
 	void _draw_message(Message &p_message, int p_index);
+	void _draw_welcome(float p_height);
 	void _draw_text(const String &p_text);
 };

@@ -469,7 +469,7 @@ bool EditorExport::export_preset(const String &p_project_dir, const ExportPreset
 
 	const String template_path = p_preset.custom_template.empty() ? find_template(p_preset.platform) : p_preset.custom_template;
 	if (template_path.empty() || !fs::is_regular_file(fs::u8path(template_path), ec)) {
-		r_message = "Modèle d'export introuvable pour " + p_preset.platform + ". Placez l'exécutable « " + _template_name(p_preset.platform) + " » de ce système ici :\n  " + get_template_hint(p_preset.platform) + "\nou indiquez son chemin dans « Modèle personnalisé ».";
+		r_message = "Modèle d'export introuvable pour " + p_preset.platform + ". Placez l'exécutable « " + _template_name(p_preset.platform) + " » de ce système ici :\n  " + get_template_hint(p_preset.platform) + "\nou indiquez son chemin dans « Modèle personnalisé ».\nLe plus simple : installez le paquet de modèles de cette version (Projet > Modèles d'exportation..., ou mex --installer-modeles <paquet.tpz>).";
 		return false;
 	}
 	ec.clear();

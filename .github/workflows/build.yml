@@ -371,6 +371,7 @@ jobs:
             echo "| Windows, version console (facultative) | \`mex-$LABEL-windows-x86_64.console.exe\`, à placer à côté du premier |"
             echo "| Linux x86_64 (glibc 2.39 ou plus récente : Ubuntu 24.04, Debian 13, Fedora 40...) | \`mex-$LABEL-linux-x86_64\` : un seul fichier |"
             echo "| macOS 11 ou plus récent (Intel et Apple Silicon) | \`mex-$LABEL-macos-universal.tar.gz\` |"
+            echo "| Modèles d'export seuls (facultatifs : l'éditeur les contient déjà) | \`mex-$LABEL-modeles-export.tpz\`, à installer par *Projet > Modèles d'exportation...* |"
             echo "| Projets d'exemple (facultatifs) | \`mex-$LABEL-exemples.zip\` |"
             echo
             echo "**Windows :** téléchargez le fichier \`.exe\` et lancez-le. Il contient l'éditeur et les modèles d'export (Windows, Linux, macOS, web)."

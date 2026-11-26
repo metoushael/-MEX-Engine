@@ -59,7 +59,7 @@ def scenario(step, results):
         ]
     if step == 3:
         return "", [("lancer_jeu", {"scene": "res://agent_test.scn", "secondes": 1})]
-    text = "Voici ce que j'ai observé :\n"
+    text = "## Bilan\nVoici ce que j'ai **observé** en lisant le projet et la sortie du jeu :\n"
     checks = [
         ("liste des fichiers reçue", "project.mex" in results.get("lister_fichiers", "")),
         ("compétence chargée", "MexScript" in results.get("charger_competence", "")),
@@ -78,7 +78,7 @@ def scenario(step, results):
     for name, ok in checks:
         text += ("- OK : " if ok else "- ECHEC : ") + name + "\n"
         log(("CONTROLE OK    " if ok else "CONTROLE ECHEC ") + name)
-    text += "\nLe script final :\n```gdscript\n" + SCRIPT + "```\nÀ vous d'essayer le jeu."
+    text += "\nLe script final, dans `res://agent_test.mx` :\n```mexscript\n" + SCRIPT + "```\n1. Ouvrez la scène `agent_test.scn`.\n2. Lancez-la avec **F6**.\n\n> À vous d'essayer le jeu."
     log("SCENARIO TERMINE")
     return text, []
 

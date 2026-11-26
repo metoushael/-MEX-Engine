@@ -105,6 +105,12 @@ void EditorNode::_draw_export_dialog() {
 			changed = true;
 		}
 		ImGui::EndDisabled();
+		ImGui::Spacing();
+		if (ImGui::Button(ICON_DOWNLOAD "  Modèles...", ImVec2(-FLT_MIN, 0))) {
+			templates_open = true;
+			templates_message.clear();
+		}
+		ImGui::SetItemTooltip("État des modèles d'exportation, installation d'un paquet « .tpz »");
 		ImGui::EndChild();
 
 		// --- Réglages du préréglage choisi ---
@@ -136,6 +142,10 @@ void EditorNode::_draw_export_dialog() {
 				ImGui::PushStyleColor(ImGuiCol_Text, EditorUI::col(palette.warning));
 				ImGui::TextWrapped(web ? "Modèle introuvable. Copiez le fichier mex-jeu.js ici :\n%s" : "Modèle introuvable. Copiez le mex-jeu de ce système ici :\n%s", EditorExport::get_template_hint(preset.platform).c_str());
 				ImGui::PopStyleColor();
+				if (ImGui::Button(ICON_DOWNLOAD "  Installer un paquet de modèles...")) {
+					templates_open = true;
+					templates_message.clear();
+				}
 			}
 			ImGui::Spacing();
 			if (macos) {

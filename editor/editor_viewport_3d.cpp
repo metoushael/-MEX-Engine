@@ -391,10 +391,50 @@ void EditorNode::_draw_viewport_3d() {
 	const Size2 size(std::max(16.0f, std::floor(avail.x)), std::max(16.0f, std::floor(avail.y)));
 	RenderingServer3D *rs3d = RenderingServer3D::get_singleton();
 	if (!rs3d || !rs3d->is_available()) {
-		ImGui::Dummy(ImVec2(0, size.y * 0.4f));
-		const char *message = "OpenGL n'est pas disponible : la vue 3D ne peut pas être affichée.";
-		ImGui::SetCursorPosX(std::max(8.0f, (ImGui::GetWindowWidth() - ImGui::CalcTextSize(message).x) * 0.5f));
-		ImGui::TextDisabled("%s", message);
+		// La vue 3D a besoin du pilote de rendu OpenGL. On dit lequel est utilisé, pourquoi, et
+		// on propose de revenir à OpenGL d'un clic.
+		DisplayServer *display = DisplayServer::get_singleton();
+		const String driver = display ? display->get_render_driver() : String();
+		const String note = display ? display->get_render_note() : String();
+		static bool opengl_requested = false; // bouton « Activer OpenGL » pressé pendant cette session
+		const bool chosen = pref_render_driver != "auto" && pref_render_driver != "opengl";
+		String reason;
+		if (pref_render_driver == "opengl" && opengl_requested) {
+			reason = "OpenGL est demandé : il sera utilisé au prochain démarrage de MEX.";
+		} else if (chosen) {
+			reason = "Le pilote de rendu « " + pref_render_driver + " » est choisi dans les préférences (c'est aussi ce que règle le mode de compatibilité). La vue 3D a besoin d'OpenGL.";
+		} else if (!note.empty()) {
+			reason = note;
+		} else {
+			reason = "Le pilote de rendu utilisé est « " + driver + " ». La vue 3D a besoin d'OpenGL.";
+		}
+		const float width = std::min(ES(560), std::max(ES(120), size.x - ES(32)));
+		const float left = std::max(ES(8), (ImGui::GetWindowWidth() - width) * 0.5f);
+		ImGui::Dummy(ImVec2(0, std::max(ES(8), size.y * 0.28f)));
+		ImGui::SetCursorPosX(left);
+		ImGui::BeginGroup();
+		ImGui::PushTextWrapPos(left + width);
+		ImGui::TextColored(EditorUI::col(palette.warning), ICON_WARNING "  La vue 3D ne peut pas être affichée");
+		ImGui::Spacing();
+		ImGui::TextUnformatted(reason.c_str());
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+		if (pref_render_driver == "opengl" && opengl_requested) {
+			ImGui::PushTextWrapPos(left + width);
+			ImGui::TextColored(EditorUI::col(palette.success), ICON_CHECK "  Fermez MEX puis relancez-le.");
+			ImGui::PopTextWrapPos();
+		} else {
+			if (_accent_button(ICON_VIEW_3D "  Activer OpenGL")) {
+				pref_render_driver = "opengl";
+				opengl_requested = true;
+				_save_prefs();
+			}
+			ImGui::SetItemTooltip("Enregistre le pilote de rendu OpenGL dans les préférences.\nIl est pris en compte au prochain démarrage de MEX.");
+			ImGui::PushTextWrapPos(left + width);
+			ImGui::TextDisabled("Si l'image devient mauvaise avec OpenGL : Éditeur > Préférences > Mode de compatibilité, ou lancez MEX avec l'option --sans-echec.");
+			ImGui::PopTextWrapPos();
+		}
+		ImGui::EndGroup();
 		return;
 	}
 	// Rendu en pixels réels (écrans à haute densité) ; view3d_size reste en unités d'interface.

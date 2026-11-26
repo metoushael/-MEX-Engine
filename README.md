@@ -113,7 +113,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.10.0). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.11.0). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -146,6 +146,7 @@ mex --path projects/demo3d             # lance la démonstration 3D
 | `--sans-echec` | Mode de compatibilité pour cette fois : barre de titre du système, pilote de rendu le plus sûr (sans 3D) |
 | `--export <préréglage>` | Exporte le projet sans ouvrir de fenêtre (voir [Exporter un jeu](#exporter-un-jeu)) |
 | `--incorporer-modeles <sortie> ...` | Écrit une copie de l'éditeur qui contient des modèles d'export (voir [Modèles d'export](#modèles-dexport)) |
+| `--installer-modeles <paquet.tpz>` | Installe un paquet de modèles d'export (voir [Modèles d'export](#modèles-dexport)) |
 | `--licences` | Affiche les licences des composants utilisés (éditeur et jeux exportés) |
 | `--version`, `--help` | Version, aide |
 
@@ -160,8 +161,8 @@ de l'éditeur** : il démarre l'éditeur dans le terminal, y affiche ses message
 scripts, erreurs, résultat d'un export) et rend son code de retour.
 
 ```bat
-mex-v0.10.0-windows-x86_64.console.exe --path mon_projet --export "*"
-mex-v0.10.0-windows-x86_64.console.exe --version
+mex-v0.11.0-windows-x86_64.console.exe --path mon_projet --export "*"
+mex-v0.11.0-windows-x86_64.console.exe --version
 ```
 
 Le lanceur cherche l'éditeur qui porte le même nom que lui sans `.console` : renommez les
@@ -179,12 +180,24 @@ deux fichiers ensemble (`mex.exe` et `mex.console.exe`, par exemple).
 La 3D, les shaders 2D et les lumières 2D ont besoin du pilote de rendu `opengl`. Le moteur
 l'essaie donc en premier, puis **contrôle le pilote OpenGL de la carte graphique** avant de
 s'en servir. Un mauvais pilote OpenGL ne refuse pas de démarrer : il donne une image fausse
-(vues blanches, image décalée, lenteur). Il est écarté dans trois cas :
+(vues blanches, image décalée, lenteur). Il est écarté dans quatre cas :
 
 - Windows sans pilote du fabricant de la carte (« GDI Generic », OpenGL 1.1 calculé par le
   processeur) ;
-- OpenGL trop ancien : moins de 3.3 sous Windows, moins de 2.1 ailleurs ;
-- pas de dessin dans une texture.
+- OpenGL plus ancien que 2.1 ;
+- pas de dessin dans une texture ;
+- **essai de dessin** manqué : au démarrage, le moteur dessine un fond, un rectangle, un
+  triangle et une petite image dans une texture cachée, puis relit le résultat. Des couleurs
+  ou des positions fausses écartent le pilote.
+
+> **Changement de la version 0.11.** Jusqu'à la version 0.10, Windows exigeait OpenGL 3.3 :
+> sur un ordinateur dont la carte s'arrête à OpenGL 2.1, 3.0, 3.1 ou 3.2, la vue 3D affichait
+> « OpenGL n'est pas disponible » alors que le rendu 3D de MEX n'a besoin que d'OpenGL 2.1.
+> Ce seuil est supprimé ; c'est l'essai de dessin qui juge le pilote, pas son âge.
+
+Quand la vue 3D ne peut pas s'afficher, elle dit maintenant **pourquoi** (pilote choisi dans
+les préférences, mode de compatibilité, pilote écarté et raison) et propose le bouton
+**Activer OpenGL**, qui règle le pilote de rendu sur OpenGL pour le démarrage suivant.
 
 Le moteur prend alors le pilote habituel du système (Direct3D sous Windows), puis le rendu
 logiciel. La 2D fonctionne normalement, la 3D, les shaders et les lumières 2D sont
@@ -959,10 +972,41 @@ bruts (ne mélangez pas les deux sur une même connexion).
 - `get_tree().push_input(evenement)` envoie un `InputEventKey` ou `InputEventMouseButton`
   fabriqué par script (essais automatiques d'une interface).
 
+## Documentation intégrée
+
+*Aide > Référence des classes* (ou `F1`) ouvre la documentation dans l'éditeur, sur la classe
+du nœud sélectionné. À gauche, l'arbre des classes et une recherche qui porte sur les noms
+de classes, de propriétés, de méthodes et de signaux. À droite, la page de la classe : ce
+qu'elle fait en une phrase, la chaîne d'héritage et les classes qui en héritent (cliquables),
+ses propriétés avec leur type et leurs valeurs possibles, ses méthodes, ses signaux et leurs
+arguments, ses constantes, puis les membres hérités, classe par classe.
+
+Ces listes sont lues dans le moteur en cours d'exécution : elles sont toujours à jour. En
+revanche, il n'y a pas encore de description rédigée pour chaque propriété et chaque
+méthode, ni le nom et le type des arguments des méthodes (seulement leur nombre).
+
 ## MEX Agent
 
-**MEX Agent** est un assistant intégré à l'éditeur (onglet *MEX Agent*, à côté de
-l'inspecteur). Vous décrivez ce que vous voulez (« ajoute un ennemi qui fait des
+**MEX Agent** est un assistant intégré à l'éditeur. Il se présente de deux façons :
+
+- le **mode Agent** : bouton *Agent* de la barre du haut, à côté de *2D*, *3D*, *Script* et
+  *Jeu* (ou `Ctrl+Maj+A`). La conversation prend toute la fenêtre : écran d'accueil avec des
+  idées de départ, colonne de lecture centrée, volet *Changements* à droite (les fichiers
+  créés ou modifiés, un clic les ouvre, *Tout annuler* les remet dans leur état d'avant) ;
+- le **panneau latéral** : onglet *MEX Agent* à côté de l'inspecteur, pour garder la scène
+  sous les yeux. Le bouton en haut à droite du panneau passe de l'un à l'autre, et la
+  conversation suit.
+
+Dans les deux cas : réponses mises en forme (titres, listes, gras, blocs de code avec bouton
+*Copier*), étapes de l'agent sur une ligne chacune (un clic montre le détail), demande
+d'accord dans une carte, zone de saisie qui grandit avec le texte. Sous la saisie, une
+pastille donne le modèle (un clic change de service ou de modèle) et une autre règle
+l'accord : *Demander* ou *Automatique*. Les mouvements (apparition des messages, texte qui
+s'écrit, survols, défilement) se coupent dans *Connexion* > *Animations*, ou avec
+`MEX_AGENT_ANIMATIONS=0`. Lancer le jeu vous-même (F5) referme le mode Agent pour montrer
+le jeu ; lancé par l'agent, le jeu reste derrière et l'agent en lit la sortie.
+
+Vous décrivez ce que vous voulez (« ajoute un ennemi qui fait des
 allers-retours », « pourquoi mon joueur traverse le sol ? ») ; l'assistant lit les fichiers du
 projet, écrit des scripts et des scènes, règle le projet, lance le jeu et lit sa sortie pour
 corriger ses erreurs.
@@ -1055,6 +1099,15 @@ point), le dossier `export/` et le dossier de destination, les archives `.pck`,
 par `.mexignore` ; la liste « à exclure » l'emporte sur tout, sauf sur `project.mex`.
 
 ### Modèles d'export
+
+**Paquet de modèles.** Chaque version publiée fournit `mex-<version>-modeles-export.tpz` :
+une archive ZIP qui réunit les modèles de tous les systèmes (`templates/version.txt`, puis
+`templates/<système>/mex-jeu[.exe|.js]`). L'éditeur publié en un seul fichier les contient
+déjà ; le paquet sert à un éditeur compilé soi-même, ou à remettre des modèles en place.
+*Projet > Modèles d'exportation...* montre, pour chaque système, si un modèle est disponible
+et d'où il vient, installe un paquet (*Installer depuis un fichier...*) et supprime les
+modèles installés. En ligne de commande : `mex --installer-modeles <paquet.tpz>`. Un paquet
+d'une autre version que l'éditeur est refusé, un paquet endommagé n'installe rien.
 
 Un modèle est l'exécutable `mex-jeu` du système visé (`mex-jeu.js` pour le web). L'éditeur
 le cherche, dans l'ordre :
@@ -1366,6 +1419,47 @@ français.
 
 ## Limites actuelles
 
+**Par rapport à Godot.** MEX reprend l'organisation de Godot, pas son étendue. Ce qui manque
+encore, par ordre d'ampleur :
+
+- **Un seul moteur de rendu** : OpenGL 2.1 pour la 3D, les shaders et les lumières 2D (avec
+  Direct3D ou le rendu logiciel en repli, 2D seulement). Pas de rendu Vulkan, Direct3D 12 ou
+  Metal, pas d'équivalent de *Forward+* ni de *Mobile*, pas de langage de shaders commun à
+  plusieurs moteurs de rendu.
+- **Texte** : alphabets latin (y compris le vietnamien), grec et cyrillique, depuis la
+  version 0.11 et avec une police qui les contient (celle fournie, Roboto, les contient).
+  Pas de mise en forme des écritures
+  complexes (arabe, hébreu, écritures indiennes), pas d'écriture de droite à gauche, pas de
+  polices de repli pour le chinois, le japonais ou le coréen.
+- **Physique** : corps statiques, cinématiques et rigides, zones et rayons ; pas
+  d'articulations, pas de corps mous, pas de véhicules.
+- **Réseau** : TCP et UDP ; pas de requêtes HTTP ni de TLS en jeu, pas de multijoueur de
+  haut niveau (RPC, synchronisation).
+- **Import** : pas de réglages d'import par fichier ni de dossier d'import ; les fichiers
+  sont lus tels quels.
+- **Classes** : environ 150, contre plus de mille dans Godot.
+- **Export** : pas d'Android ni d'iOS.
+
+**Feuille de route.** Dans l'ordre où ces manques seront traités, du plus proche au plus
+lointain. Rien de ce qui suit n'est fait :
+
+1. *Documentation* : descriptions rédigées de chaque propriété et de chaque méthode, noms et
+   types des arguments. *Traductions* : fenêtre de l'éditeur pour gérer les langues d'un
+   projet. *Import* : réglages par fichier (filtrage, répétition, compression des textures).
+2. *Physique* : articulations 2D et 3D (pivot, ressort, glissière), formes convexes et
+   maillages de collision, détection continue.
+3. *Réseau* : requêtes HTTP (`HTTPRequest`), puis TLS, puis WebSocket ; ensuite seulement un
+   multijoueur de haut niveau.
+4. *Texte* : polices de repli (plusieurs fichiers pour un même texte) et atlas rempli à la
+   demande, ce qui ouvre le chinois, le japonais et le coréen ; puis l'écriture de droite à
+   gauche et la mise en forme des écritures complexes, qui demandent d'intégrer HarfBuzz et
+   un algorithme bidirectionnel.
+5. *Rendu* : un langage de shaders propre à MEX, traduit vers GLSL, pour la 2D puis la 3D ;
+   un second moteur de rendu (OpenGL 3.3 / WebGL 2, qui apporterait la 3D sur le web) ;
+   Vulkan et Direct3D 12 en dernier : c'est le chantier le plus lourd de la liste.
+6. *Export Android* : il demande le SDK et le NDK Android, une couche Java et la signature
+   des paquets.
+
 - 2D : shaders et lumières seulement avec le rendu OpenGL ; pas de cartes de normales, de
   `BackBufferCopy`, de particules sur carte graphique ni de lumière directionnelle 2D ; les
   ombres 2D ont un bord net.
@@ -1437,7 +1531,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.10.0"
+git commit -m "MEX 0.11.0"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -1447,7 +1541,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Fichiers `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.10.0**. Fichiers `mex-v0.10.0-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.11.0**. Fichiers `mex-v0.11.0-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -1457,24 +1551,25 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.10.0
-  git push origin v0.10.0
+  git tag v0.11.0
+  git push origin v0.11.0
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.10.0` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.11.0` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.10.0-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
-- `mex-v0.10.0-windows-x86_64.console.exe` : sa version console ;
-- `mex-v0.10.0-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
-- `mex-v0.10.0-macos-universal.tar.gz` : l'éditeur pour macOS et les modèles d'export ;
-- `mex-v0.10.0-exemples.zip` : les projets d'exemple ;
+- `mex-v0.11.0-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
+- `mex-v0.11.0-windows-x86_64.console.exe` : sa version console ;
+- `mex-v0.11.0-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
+- `mex-v0.11.0-macos-universal.tar.gz` : l'éditeur pour macOS et les modèles d'export ;
+- `mex-v0.11.0-modeles-export.tpz` : le paquet des modèles d'export ;
+- `mex-v0.11.0-exemples.zip` : les projets d'exemple ;
 - `SHA256SUMS.txt`, les empreintes de ces fichiers.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.10.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.11.0-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 fichiers sont tout de même publiés et la note de version le signale ; seul l'éditeur Linux
 est indispensable, car c'est lui qui assemble les fichiers.
 
@@ -1521,8 +1616,8 @@ SDL_AUDIODRIVER=dummy xvfb-run -a mex-jeu --path tests/essais --quit-after 60
 ```
 
 Chaque vérification affiche `OK` ou `ECHEC`, la dernière ligne donne le bilan
-(`BILAN  127 réussis, 0 échecs`). Avec `MEX_VIRTUAL_JOYPAD=1`, SDL crée une manette
-virtuelle et un essai de plus vérifie le trajet complet, de SDL jusqu'au script (bilan : 128) ;
+(`BILAN  128 réussis, 0 échecs`). Avec `MEX_VIRTUAL_JOYPAD=1`, SDL crée une manette
+virtuelle et un essai de plus vérifie le trajet complet, de SDL jusqu'au script (bilan : 129) ;
 `Input.virtual_joy_button(bouton, appuye)`, `Input.virtual_joy_axis(axe, valeur)` et
 `Input.virtual_joy_disconnect()` la pilotent. La ligne d'erreur « Shader 2D ... 'inconnu' undeclared » est
 attendue : un essai vérifie qu'un shader faux est bien signalé (de même pour un texte JSON

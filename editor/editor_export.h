@@ -43,6 +43,18 @@ public:
 	// templates/<système>/ à côté de l'éditeur, puis dans le dossier de préférences
 	// (export_templates/<système>/), puis à côté de l'éditeur si le système est le même.
 	static String find_template(const String &p_platform);
+	// Paquet de modèles d'exportation (« .tpz », archive ZIP) : installation dans le dossier de
+	// préférences (export_templates/<système>/), suppression, état de chaque système.
+	struct TemplateInfo {
+		String platform;
+		String path; // vide : modèle absent
+		String origin; // d'où vient le modèle trouvé
+	};
+	static String get_installed_templates_dir();
+	static String get_installed_templates_version();
+	static bool install_template_package(const String &p_package, String &r_message);
+	static bool remove_installed_templates(String &r_message);
+	static std::vector<TemplateInfo> get_template_report();
 	// Page HTML d'un jeu exporté pour le web (repères « @...@ » remplacés à l'export).
 	static const char *get_web_shell();
 	static const char *get_web_platform();
