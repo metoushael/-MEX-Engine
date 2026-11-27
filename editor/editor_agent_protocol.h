@@ -45,7 +45,19 @@ struct Dialect {
 	// Serveur local (LM Studio, Ollama, llama.cpp) : un message sans texte porte "" et non
 	// null, que les gabarits Jinja des modèles ne savent pas lire.
 	bool local = false;
+	// Service et modèle de la requête (adresse, saut de ligne, modèle) : le champ
+	// « extra_content » d'un appel d'outil n'est renvoyé qu'à celui qui l'a écrit.
+	String origin;
+	// Gemini (à partir de la version 3) signe le premier appel d'outil de chaque étape et
+	// refuse la suite si la signature ne revient pas. Vrai : une étape sans signature (autre
+	// modèle, autre service) reçoit la valeur de remplacement prévue par Google.
+	bool thought_signatures = false;
 };
+
+// Valeur que Google documente pour un appel d'outil que le modèle n'a pas signé lui-même.
+extern const char *const THOUGHT_SIGNATURE_PLACEHOLDER;
+// Vrai pour les adresses de Google (API Gemini, Vertex AI), qui exigent ces signatures.
+bool wants_thought_signatures(const String &p_base_url);
 
 // Corps de la requête. p_definitions : [{ name, description, parameters }].
 // Garanties, pour les deux formats : aucun message vide, jamais deux messages « user » ou
@@ -77,6 +89,7 @@ enum ErrorKind {
 	ERROR_MODEL, // modèle inconnu ou non chargé
 	ERROR_AUTH,
 	ERROR_RATE,
+	ERROR_SIGNATURE, // Gemini : « Function call is missing a thought_signature »
 };
 ErrorKind classify_error(int p_http_status, const String &p_text);
 

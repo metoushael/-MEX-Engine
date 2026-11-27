@@ -30,6 +30,11 @@ Le nom du modèle demandé choisit son comportement :
                 comme LM Studio)
   faux-strict   gabarit plus strict encore : erreur Jinja si « tools » est envoyé, et
                 « Only user and assistant roles are supported! » pour un message system
+  faux-gemini   outils, à la manière de Gemini 3 : le premier appel de chaque étape porte une
+                « signature de réflexion » (extra_content.google.thought_signature), exigée
+                telle quelle dans les requêtes suivantes ; sinon HTTP 400, erreur de Google
+  faux-gemini-relais   Gemini derrière un relais qui ne transmet pas les signatures : il
+                n'en envoie aucune et exige la valeur de remplacement documentée par Google
   faux-panne    répond par une page HTML 502, puis par un texte qui n'est pas du JSON, puis
                 par une réponse vide, puis normalement
   tout autre    modèle à outils : joue le scénario
@@ -48,7 +53,11 @@ KIND = sys.argv[3] if len(sys.argv) > 3 else "inconnu"
 
 # Modèles sans appel d'outils ; les autres en ont.
 NO_TOOLS = ("faux-gemma", "faux-strict", "faux-panne")
-MODELS = ["faux-outils", "faux-gemma", "faux-strict", "faux-panne"]
+MODELS = ["faux-outils", "faux-gemma", "faux-strict", "faux-panne", "faux-gemini", "faux-gemini-relais"]
+GEMINI = ("faux-gemini", "faux-gemini-relais")
+PLACEHOLDER = "skip_thought_signature_validator"
+# Mot pour mot la réponse de Google, enveloppée dans un tableau.
+SIGNATURE_ERROR = [{"error": {"code": 400, "message": "Function call is missing a thought_signature in functionCall parts. This is required for tools to work correctly, and missing thought_signature may lead to degraded model performance. Additional data, function call `default_api:lister_fichiers` , position 2. Please refer to https://ai.google.dev/gemini-api/docs/thought-signatures for more details.", "status": "INVALID_ARGUMENT"}}]
 JINJA = ("Error rendering prompt with jinja template: \"Conversation roles must alternate user/assistant/user/assistant/...\".\n\n"
          "This is usually an issue with the model's prompt template.")
 failures = {"faux-panne": 0}
@@ -255,6 +264,7 @@ class Handler(BaseHTTPRequestHandler):
             names = {}
             pending = []
             step = 0
+            unsigned = 0
             previous = "system"
             for message in messages[1:]:
                 role = message["role"]
@@ -280,6 +290,15 @@ class Handler(BaseHTTPRequestHandler):
                 if role == "user" and (not isinstance(message.get("content"), str) or not message["content"].strip()):
                     problems.append("message 'user' vide")
                 if role == "assistant":
+                    if model in GEMINI and message.get("tool_calls"):
+                        # La signature de l'étape doit revenir sur son premier appel, et lui seul.
+                        expected = "sig-%d" % step if model == "faux-gemini" else PLACEHOLDER
+                        if message["tool_calls"][0].get("extra_content", {}).get("google", {}).get("thought_signature") != expected:
+                            unsigned += 1
+                        if any("extra_content" in call for call in message["tool_calls"][1:]):
+                            problems.append("signature sur un appel parallèle")
+                    elif any("extra_content" in call for call in message.get("tool_calls", [])):
+                        problems.append("extra_content envoyé à un modèle qui n'en a pas donné")
                     step += 1
                     if not message.get("tool_calls") and not (message.get("content") or "").strip():
                         problems.append("message 'assistant' vide")
@@ -293,12 +312,19 @@ class Handler(BaseHTTPRequestHandler):
                 previous = role
             if pending:
                 problems.append("appel d'outil sans résultat en fin de liste")
+            if unsigned:
+                log("POST %s  modèle=%s  messages=%d  REFUS signature (%d étape(s) sans signature)" % (self.path, model, len(messages), unsigned))
+                return self.reply(400, SIGNATURE_ERROR)
+            if model in GEMINI and step:
+                log("SIGNATURES CONFORMES (%d étape(s))" % step)
             text, calls = scenario(step, results)
             message = {"role": "assistant", "content": text or None}
             if calls:
                 # Comme plusieurs serveurs locaux : toujours les mêmes identifiants, d'un tour à
                 # l'autre. MEX Agent doit les rendre uniques dans la conversation.
                 message["tool_calls"] = [{"id": "call_%d" % n, "type": "function", "function": {"name": name, "arguments": json.dumps(arguments, ensure_ascii=False)}} for n, (name, arguments) in enumerate(calls)]
+                if model == "faux-gemini":
+                    message["tool_calls"][0]["extra_content"] = {"google": {"thought_signature": "sig-%d" % step}}
             payload = {"id": "chatcmpl-test", "object": "chat.completion", "model": body.get("model"),
                        "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if calls else "stop"}]}
         else:

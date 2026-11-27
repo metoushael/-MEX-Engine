@@ -913,6 +913,115 @@ void test_capabilities() {
 }
 
 void test_misc() {
+	section("Signatures de réflexion de Gemini");
+	{
+		const String google = "https://generativelanguage.googleapis.com/v1beta/openai\ngemini";
+		Message message;
+		String error, stop;
+		auto signature = [](const Dictionary &p_request, int p_message, int p_call) {
+			const Dictionary item = at(at(at(p_request, "messages").as_array()[p_message].as_dictionary(), "tool_calls").as_array()[p_call].as_dictionary(), "extra_content").get_type() == Variant::DICTIONARY ? at(at(p_request, "messages").as_array()[p_message].as_dictionary(), "tool_calls").as_array()[p_call].as_dictionary() : Dictionary();
+			if (!item.has(Variant("extra_content"))) {
+				return String("<aucune>");
+			}
+			return S(at(at(at(item, "extra_content").as_dictionary(), "google").as_dictionary(), "thought_signature"));
+		};
+		auto signed_call = [&](const String &p_id, const String &p_name, const String &p_signature, const String &p_origin) {
+			ToolCall item = call(p_id, p_name, "résultat");
+			Dictionary inner;
+			inner[Variant("thought_signature")] = Variant(p_signature);
+			item.extra[Variant("google")] = Variant(inner);
+			item.extra_origin = p_origin;
+			return item;
+		};
+		auto gemini = [&](const std::vector<Message> &p_messages, const String &p_origin, bool p_signatures) {
+			Dialect dialect;
+			dialect.origin = p_origin;
+			dialect.thought_signatures = p_signatures;
+			return build_request(false, "gemini", SYSTEM, p_messages, definitions(), 4096, dialect);
+		};
+
+		// Réponse de Gemini : deux appels parallèles, seul le premier est signé.
+		check(parse("{\"choices\": [{\"index\": 0, \"finish_reason\": \"tool_calls\", \"message\": {\"role\": \"assistant\", \"tool_calls\": [{\"id\": \"\", \"type\": \"function\", \"function\": {\"name\": \"lister_fichiers\", \"arguments\": \"{}\"}, \"extra_content\": {\"google\": {\"thought_signature\": \"SIG_A\"}}}, {\"id\": \"\", \"type\": \"function\", \"function\": {\"name\": \"lire_fichier\", \"arguments\": \"{\\\"chemin\\\":\\\"res://project.mex\\\"}\"}}]}}]}", 200, message, error, stop), "Gemini : appels d'outils lus");
+		check(message.calls.size() == 2, "Gemini : deux appels");
+		if (message.calls.size() == 2) {
+			check_eq(S(at(at(message.calls[0].extra, "google").as_dictionary(), "thought_signature")), "SIG_A", "Gemini : la signature du premier appel est gardée");
+			check(message.calls[1].extra.size() == 0, "Gemini : le second appel n'a pas de signature");
+			check(!message.calls[0].id.empty() && message.calls[0].id != message.calls[1].id, "Gemini : identifiants vides remplacés");
+		}
+
+		// La conversation qui échouait : plusieurs étapes d'outils, puis la requête suivante.
+		const std::vector<Message> conversation = {
+			user("Crée un petit jeu de plateforme"),
+			assistant_calls("", { signed_call("a1", "lister_fichiers", "SIG_A", google), call("a2", "lire_fichier", "contenu") }),
+			assistant_calls("Je lis la scène.", { signed_call("b1", "lire_fichier", "SIG_B", google) }),
+		};
+		{
+			const Dictionary request = gemini(conversation, google, true);
+			check_eq(roles(request), "system user assistant tool tool assistant tool", "Gemini : étapes d'outils dans l'ordre");
+			check_eq(openai_problem(request), "", "Gemini : forme valide");
+			check_eq(signature(request, 2, 0), "SIG_A", "Gemini : la signature revient avec le premier appel");
+			check_eq(signature(request, 2, 1), "<aucune>", "Gemini : l'appel parallèle reste sans signature");
+			check_eq(signature(request, 5, 0), "SIG_B", "Gemini : chaque étape garde sa signature");
+		}
+		{
+			// Même conversation envoyée à un autre modèle de Google : ses signatures ne valent
+			// pas pour lui, le premier appel de chaque étape reçoit la valeur de remplacement.
+			const Dictionary request = gemini(conversation, "https://generativelanguage.googleapis.com/v1beta/openai\nautre-modele", true);
+			check_eq(signature(request, 2, 0), THOUGHT_SIGNATURE_PLACEHOLDER, "autre modèle de Google : valeur de remplacement");
+			check_eq(signature(request, 2, 1), "<aucune>", "autre modèle de Google : rien sur l'appel parallèle");
+			check_eq(signature(request, 5, 0), THOUGHT_SIGNATURE_PLACEHOLDER, "autre modèle de Google : chaque étape");
+		}
+		{
+			// Appels venus d'un service sans signature (Claude, OpenAI, modèle local), puis Gemini.
+			const Dictionary request = gemini({ user("Bonjour"), assistant_calls("", { call("c1", "lister_fichiers", "liste"), call("c2", "lire_fichier", "contenu") }) }, google, true);
+			check_eq(signature(request, 2, 0), THOUGHT_SIGNATURE_PLACEHOLDER, "historique d'un autre service : valeur de remplacement");
+			check_eq(signature(request, 2, 1), "<aucune>", "historique d'un autre service : un seul appel signé");
+		}
+		{
+			// Service qui ne demande pas de signature : rien n'est ajouté, et ce qui vient d'un
+			// autre service ne lui est pas envoyé.
+			const Dictionary other = gemini(conversation, "https://api.openai.com/v1\ngpt", false);
+			check(JSON::stringify(Variant(other)).find("extra_content") == String::npos, "autre service : aucun extra_content");
+			const Dictionary same = gemini(conversation, google, false);
+			check_eq(signature(same, 2, 0), "SIG_A", "même service : extra_content renvoyé tel quel");
+			check(JSON::stringify(Variant(openai({ user("Bonjour"), assistant_calls("", { call("c1", "lister_fichiers", "liste") }) }))).find("extra_content") == String::npos, "sans signature demandée : aucun extra_content");
+		}
+		{
+			// extra_content sans signature de Google : complété, sans toucher à ce qui est gardé.
+			ToolCall item = call("d1", "lister_fichiers", "liste");
+			item.extra[Variant("autre")] = Variant(1);
+			item.extra_origin = google;
+			const std::vector<Message> list = { user("Bonjour"), assistant_calls("", { item }) };
+			const Dictionary request = gemini(list, google, true);
+			check_eq(signature(request, 2, 0), THOUGHT_SIGNATURE_PLACEHOLDER, "extra_content sans signature : complété");
+			check(at(at(at(at(request, "messages").as_array()[2].as_dictionary(), "tool_calls").as_array()[0].as_dictionary(), "extra_content").as_dictionary(), "autre").as_int() == 1, "extra_content sans signature : le reste est gardé");
+			check(!list[1].calls[0].extra.has(Variant("google")), "la conversation gardée n'est pas modifiée");
+		}
+		{
+			// Formats où « extra_content » n'a pas sa place.
+			check(JSON::stringify(Variant(anthropic(conversation))).find("extra_content") == String::npos && JSON::stringify(Variant(anthropic(conversation))).find("SIG_A") == String::npos, "format Anthropic : aucune signature de Google");
+			Dialect dialect;
+			dialect.tools = false;
+			dialect.origin = google;
+			dialect.thought_signatures = true;
+			check(JSON::stringify(Variant(build_request(false, "gemini", SYSTEM, conversation, definitions(), 4096, dialect))).find("thought_signature") == String::npos, "sans outils : aucune signature");
+		}
+
+		// L'erreur de Google, enveloppée dans un tableau.
+		const String body = "[\n  {\n    \"error\": {\n      \"code\": 400,\n      \"message\": \"Function call is missing a thought_signature in functionCall parts. This is required for tools to work correctly, and missing thought_signature may lead to degraded model performance. Additional data, function call `default_api:lister_fichiers` , position 2. Please refer to https://ai.google.dev/gemini-api/docs/thought-signatures for more details.\",\n      \"status\": \"INVALID_ARGUMENT\"\n    }\n  }\n]";
+		check(str_begins_with(extract_error(body, 400), "Function call is missing a thought_signature"), "erreur de Google dans un tableau : message extrait");
+		check(!parse(body, 400, message, error, stop) && str_begins_with(error, "Function call is missing a thought_signature"), "erreur de Google : réponse refusée avec son message");
+		check(classify_error(400, error) == ERROR_SIGNATURE, "erreur de Google : signature manquante reconnue");
+		check(classify_error(400, "Function calling is not enabled for models/gemma-3-27b-it") == ERROR_NO_TOOLS, "Gemini sans outils : toujours reconnu");
+		check(!parse("[{\"error\":{\"code\":429,\"message\":\"Resource has been exhausted\",\"status\":\"RESOURCE_EXHAUSTED\"}}]", 429, message, error, stop) && error == "Resource has been exhausted", "erreur de quota de Google : message extrait");
+
+		check(wants_thought_signatures("https://generativelanguage.googleapis.com/v1beta/openai"), "signatures : API Gemini");
+		check(wants_thought_signatures("https://aiplatform.googleapis.com/v1/projects/p/locations/l/endpoints/openapi"), "signatures : Vertex AI");
+		check(!wants_thought_signatures("https://openrouter.ai/api/v1"), "signatures : pas OpenRouter");
+		check(!wants_thought_signatures("http://localhost:1234/v1"), "signatures : pas un serveur local");
+		check(!wants_thought_signatures("https://exemple.com/googleapis.com/v1"), "signatures : l'hôte seul compte");
+	}
+
 	section("Identifiants et divers");
 	std::set<String> used;
 	check_eq(unique_call_id("call_1", used), "call_1", "identifiant proposé libre : conservé");

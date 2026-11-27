@@ -130,7 +130,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.11.2). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.11.4). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -178,8 +178,8 @@ de l'éditeur** : il démarre l'éditeur dans le terminal, y affiche ses message
 scripts, erreurs, résultat d'un export) et rend son code de retour.
 
 ```bat
-mex-v0.11.2-windows-x86_64.console.exe --path mon_projet --export "*"
-mex-v0.11.2-windows-x86_64.console.exe --version
+mex-v0.11.4-windows-x86_64.console.exe --path mon_projet --export "*"
+mex-v0.11.4-windows-x86_64.console.exe --version
 ```
 
 Le lanceur cherche l'éditeur qui porte le même nom que lui sans `.console` : renommez les
@@ -432,14 +432,27 @@ Dans la vue 3D :
 
 | Action | Commande |
 | --- | --- |
-| Tourner autour de la scène | Bouton droit ou bouton du milieu |
+| Tourner autour de la scène | Bouton droit ou bouton du milieu, ou glisser dans le repère d'orientation |
 | Déplacer la vue | Maj + bouton droit ou du milieu |
 | Zoomer | Molette |
 | Sélectionner | Clic gauche |
 | Déplacer / pivoter / mettre à l'échelle | Q / E / R, puis tirer une poignée du manipulateur (rouge : X, vert : Y, bleu : Z) |
 | Centrer sur la sélection | F |
-| Vues de face, de droite, de dessus | 1, 3, 7 du pavé numérique, ou menu *Vue* |
+| Vues de face, de droite, de dessus | 1, 3, 7 du pavé numérique, menu *Vue*, ou clic sur un axe du repère |
+| Vues arrière, de gauche, de dessous | Ctrl + 1, 3, 7 du pavé numérique, menu *Vue*, ou clic sur un axe du repère |
 | Perspective / orthogonale | 5 du pavé numérique, ou menu *Vue* |
+
+Le **repère d'orientation**, en haut à droite de la vue, se manipule comme celui de Godot :
+
+- un **clic sur une pastille** place la caméra de ce côté : X (droite), Y (dessus), Z (face),
+  et les pastilles sombres pour les côtés opposés (gauche, dessous, arrière). Un second clic
+  sur la pastille qui fait face donne la vue opposée ;
+- **glisser** dans le disque fait tourner la vue autour de la scène ;
+- la légende, en bas de la vue, dit ce que fera le clic et donne le nom de la vue (*Dessus*,
+  *Face*...).
+
+Une vue alignée passe en projection orthogonale ; dès que la vue tourne, la perspective
+revient. Un choix fait dans le menu *Vue* (ou avec le 5) est conservé.
 
 *Local* aligne le manipulateur sur le nœud plutôt que sur le monde, *Aimant* arrondit les
 déplacements au pas indiqué ; Ctrl pendant une rotation l'arrondit à 15°. Les formes de
@@ -1052,6 +1065,15 @@ ceux que publie votre fournisseur. Les réglages sont enregistrés dans `agent.c
 dossier de données de l'utilisateur : la clé y est écrite en clair, sur votre machine
 seulement ; elle n'est jamais placée dans le projet.
 
+**Gemini.** À partir de Gemini 3, Google joint à chaque étape d'appels d'outils une
+« signature de réflexion » (`extra_content.google.thought_signature`) et refuse la requête
+suivante si elle ne revient pas (HTTP 400, *Function call is missing a thought_signature*).
+MEX Agent garde cette signature avec l'appel et la renvoie telle quelle, au seul modèle qui
+l'a écrite. Une étape venue d'un autre modèle ou d'un autre service (vous avez changé de
+modèle en cours de conversation) reçoit la valeur de remplacement prévue par Google. Derrière
+un relais dont l'adresse n'est pas celle de Google, le même refus fait repartir la requête
+avec cette valeur.
+
 ### Modèles locaux : LM Studio et Ollama
 
 Fournisseur *Modèle local* : aucune clé, tout reste sur votre machine.
@@ -1596,7 +1618,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.11.2"
+git commit -m "MEX 0.11.4"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -1606,7 +1628,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Fichiers `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.11.2**. Fichiers `mex-v0.11.2-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.11.4**. Fichiers `mex-v0.11.4-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -1616,28 +1638,28 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.11.2
-  git push origin v0.11.2
+  git tag v0.11.4
+  git push origin v0.11.4
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.11.2` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.11.4` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.11.2-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
-- `mex-v0.11.2-windows-x86_64.console.exe` : sa version console ;
-- `mex-v0.11.2-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
-- `mex-v0.11.2-windows-x86_64.zip`, `mex-v0.11.2-linux-x86_64.tar.gz`,
-  `mex-v0.11.2-macos-universal.tar.gz` : les archives complètes (éditeur, version console,
+- `mex-v0.11.4-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
+- `mex-v0.11.4-windows-x86_64.console.exe` : sa version console ;
+- `mex-v0.11.4-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
+- `mex-v0.11.4-windows-x86_64.zip`, `mex-v0.11.4-linux-x86_64.tar.gz`,
+  `mex-v0.11.4-macos-universal.tar.gz` : les archives complètes (éditeur, version console,
   `mex-jeu`, et les modèles d'export de tous les systèmes dans `templates/`) ;
-- `mex-v0.11.2-web-wasm32.zip` : le modèle d'export web seul ;
-- `mex-v0.11.2-modeles-export.tpz` : le paquet des modèles d'export ;
-- `mex-v0.11.2-exemples.zip` : les projets d'exemple ;
+- `mex-v0.11.4-web-wasm32.zip` : le modèle d'export web seul ;
+- `mex-v0.11.4-modeles-export.tpz` : le paquet des modèles d'export ;
+- `mex-v0.11.4-exemples.zip` : les projets d'exemple ;
 - `SHA256SUMS.txt`, les empreintes de ces fichiers.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.11.2-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.11.4-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 fichiers sont tout de même publiés et la note de version le signale ; seul l'éditeur Linux
 est indispensable, car c'est lui qui assemble les fichiers.
 
@@ -1701,14 +1723,15 @@ et les chargements automatiques.
    et Ollama. `ctest` le lance aussi.
 
    ```sh
-   build/bin/mex-essais-agent        # BILAN AGENT : 359 vérifications réussies, 0 échec(s)
+   build/bin/mex-essais-agent        # BILAN AGENT : 392 vérifications réussies, 0 échec(s)
    ```
 
 2. `tests/agent/essai_modeles_locaux.sh <mex>` lance l'éditeur contre
    `tests/agent/faux_service.py`, un faux service qui imite les API d'Anthropic et d'OpenAI
    sous `/v1`, les réponses de LM Studio et d'Ollama (chemin inattendu, « does not support
-   tools », erreur du gabarit Jinja de Gemma, capacités des modèles) et des pannes (page HTML
-   502, texte qui n'est pas du JSON, réponse vide). Dix-sept cas : adresses saisies de toutes
+   tools », erreur du gabarit Jinja de Gemma, capacités des modèles), les signatures de
+   réflexion de Gemini et des pannes (page HTML 502, texte qui n'est pas du JSON, réponse
+   vide). Dix-neuf cas : adresses saisies de toutes
    les façons, modèles sans outils, pannes, et le scénario complet qui emploie chaque outil,
    dans les deux formats. Les réglages de l'utilisateur ne sont pas touchés.
 

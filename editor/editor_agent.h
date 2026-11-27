@@ -57,6 +57,12 @@ public:
 		String result;
 		bool is_error = false;
 		State state = WAITING;
+		// Champ « extra_content » de l'appel, tel que le service l'a envoyé. Gemini y place la
+		// « signature de réflexion » (extra_content.google.thought_signature) et refuse la
+		// requête suivante si l'appel revient sans elle. Renvoyé tel quel, au seul service et
+		// au seul modèle qui l'ont écrit (extra_origin : adresse, saut de ligne, modèle).
+		Dictionary extra;
+		String extra_origin;
 		// Interface : détails dépliés, instant de la première apparition.
 		bool ui_open = false;
 		double ui_born = -1.0;
@@ -69,6 +75,7 @@ public:
 		bool locked = false; // imposé par MEX_AGENT_TOOLS : aucune adaptation
 		bool announced = false; // l'absence d'outils a été signalée dans la conversation
 		bool context_warned = false;
+		bool thought_signatures = false; // Gemini derrière un relais : le service exige une signature par étape d'outils
 		int context = 0; // fenêtre de contexte du modèle chargé (0 : inconnue)
 		String origin; // d'où vient l'information, pour le message à l'utilisateur
 	};

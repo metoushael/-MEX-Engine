@@ -62,7 +62,7 @@ essai() {
 	[ -z "$DISPLAY" ] && lanceur=(xvfb-run -a -s "-screen 0 1440x860x24")
 	env XDG_DATA_HOME="$tmp/donnees" SDL_AUDIODRIVER=dummy MEX_EDITOR_TEST_SCRIPT="$tmp/scenario.txt" \
 		MEX_AGENT_PROVIDER="$fournisseur" MEX_AGENT_URL="$adresse" MEX_AGENT_MODEL="$modele" MEX_AGENT_AUTO=1 \
-		MEX_AGENT_ANIMATIONS=0 MEX_AGENT_JOURNAL="$echanges" ANTHROPIC_API_KEY=cle-de-test OPENAI_API_KEY=cle-de-test \
+		MEX_AGENT_ANIMATIONS=0 MEX_AGENT_JOURNAL="$echanges" ANTHROPIC_API_KEY=cle-de-test OPENAI_API_KEY=cle-de-test GEMINI_API_KEY=cle-de-test \
 		timeout 300 "${lanceur[@]}" "$mex" --editor --path "$tmp/projet" --quit-after "$images" > "$tmp/$nom.editeur.log" 2>&1
 	verifier "l'éditeur s'est terminé normalement" [ $? -eq 0 ]
 	if [ -n "$MEX_ESSAI_GARDER" ]; then
@@ -146,7 +146,7 @@ avec_outils() {
 	verifier "scénario terminé" contient "$journal" "SCENARIO TERMINE"
 	verifier "toutes les requêtes sont conformes" absent "$journal" "NON CONFORME"
 	verifier "cinq requêtes conformes" compte "$journal" "REQUETE CONFORME" 5
-	verifier "aucun refus" absent "$journal" "REFUS"
+	[ "$1" = "un-refus" ] || verifier "aucun refus" absent "$journal" "REFUS"
 	verifier "aucun avis d'erreur" absent "$echanges" "*** Le service"
 }
 scenario_outils=$'40 agent Fais ton essai complet\n60 agent_modeles'
@@ -164,6 +164,20 @@ avec_outils
 
 essai "outils-openai" inconnu openai "$base/v1" faux-outils 200 "$scenario_outils"
 avec_outils
+
+# Gemini 3 : chaque étape d'outils revient avec sa « signature de réflexion ».
+essai "outils-gemini" inconnu gemini "$base/v1" faux-gemini 200 "$scenario_outils"
+avec_outils
+verifier "aucune requête refusée pour signature manquante" absent "$journal" "REFUS signature"
+verifier "les signatures reviennent à chaque étape" compte "$journal" "SIGNATURES CONFORMES" 4
+verifier "la signature de la première étape est renvoyée" contient "$echanges" '"thought_signature":"sig-0"'
+
+# Gemini derrière un relais qui perd les signatures : un refus, puis la valeur de remplacement.
+essai "outils-gemini-relais" inconnu compatible "$base/v1" faux-gemini-relais 200 "$scenario_outils"
+avec_outils un-refus
+verifier "un seul refus, puis la requête repart" compte "$journal" "REFUS signature" 1
+verifier "valeur de remplacement envoyée" contient "$echanges" '"thought_signature":"skip_thought_signature_validator"'
+verifier "l'erreur de Google n'est pas montrée à l'utilisateur" absent "$echanges" "*** Le service a refusé"
 
 essai "outils-anthropic" inconnu anthropic "$base/v1" claude-essai 200 "$scenario_outils"
 avec_outils

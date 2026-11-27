@@ -415,10 +415,13 @@ Dictionary EditorAgent::build_request(const Provider &p_provider, const Provider
 	EditorAgentProtocol::Dialect dialect;
 	if (!p_provider.anthropic_format) {
 		dialect.local = EditorAgentProtocol::is_local_url(_effective_url(p_provider, p_settings));
-		const auto found = profiles.find(_profile_key(p_provider, p_settings));
+		dialect.origin = _profile_key(p_provider, p_settings);
+		dialect.thought_signatures = EditorAgentProtocol::wants_thought_signatures(_effective_url(p_provider, p_settings));
+		const auto found = profiles.find(dialect.origin);
 		if (found != profiles.end()) {
 			dialect.tools = found->second.tools != EditorAgentProtocol::TOOLS_NO;
 			dialect.system_role = found->second.system_role;
+			dialect.thought_signatures = dialect.thought_signatures || found->second.thought_signatures;
 		}
 	}
 	return EditorAgentProtocol::build_request(p_provider.anthropic_format, _effective_model(p_provider, p_settings), _system_prompt(dialect.tools), messages, EditorAgentTools::get_definitions(), max_tokens, dialect);
@@ -615,6 +618,14 @@ bool EditorAgent::_adapt_to_model(int p_error_kind) {
 	}
 	const bool has_tools = profile.tools != EditorAgentProtocol::TOOLS_NO;
 	switch (p_error_kind) {
+		case EditorAgentProtocol::ERROR_SIGNATURE:
+			// Gemini atteint par un relais (adresse qui n'est pas celle de Google) : les étapes
+			// d'outils sans signature reçoivent la valeur de remplacement, une fois pour toutes.
+			if (!profile.thought_signatures && !EditorAgentProtocol::wants_thought_signatures(_effective_url(PROVIDERS[provider_index], _settings()))) {
+				profile.thought_signatures = true;
+				return true;
+			}
+			return false;
 		case EditorAgentProtocol::ERROR_NO_TOOLS:
 			if (has_tools) {
 				profile.tools = EditorAgentProtocol::TOOLS_NO;
@@ -812,6 +823,8 @@ String _failure_hint(int p_kind, int p_http, const String &p_url, const String &
 			return "\nLa conversation dépasse la fenêtre de contexte du modèle. Rechargez-le avec un contexte plus grand (LM Studio : « Context Length » ; Ollama : variable OLLAMA_CONTEXT_LENGTH) ou commencez une nouvelle conversation.";
 		case EditorAgentProtocol::ERROR_NO_TOOLS:
 			return "\nCe modèle ne sait pas appeler d'outils.";
+		case EditorAgentProtocol::ERROR_SIGNATURE:
+			return "\nGemini exige que chaque appel d'outil lui revienne avec sa « signature de réflexion », et le service a refusé celles de cette conversation. Commencez une nouvelle conversation (bouton +) ; si l'erreur revient, choisissez un autre modèle.";
 		case EditorAgentProtocol::ERROR_SYSTEM_ROLE:
 		case EditorAgentProtocol::ERROR_TEMPLATE:
 			return "\nLe gabarit de conversation (« prompt template ») du modèle a refusé la requête, même sans outils et sans message système. Vérifiez le gabarit du modèle dans le serveur local, ou essayez un autre modèle.";
@@ -869,6 +882,14 @@ void EditorAgent::_handle_response(const Job &p_job) {
 		_notice(truncated ? "La réponse a été coupée par la limite de jetons avant le premier mot. Écrivez « continue », ou rechargez le modèle avec un contexte plus grand." : "Le modèle a renvoyé une réponse vide. Reformulez la demande ou écrivez « continue ».");
 		state = IDLE;
 		return;
+	}
+	// Ce que le service a joint à ses appels d'outils (signature de réflexion de Gemini) ne
+	// sera renvoyé qu'à lui, pour ce modèle.
+	const String origin = _profile_key(provider, _settings());
+	for (ToolCall &call : message.calls) {
+		if (call.extra.size() > 0) {
+			call.extra_origin = origin;
+		}
 	}
 	messages.push_back(message);
 	scroll_to_end = 3;

@@ -359,6 +359,21 @@ Dictionary _build_openai(const String &p_model, const String &p_system, const st
 			item[Variant("id")] = Variant(id);
 			item[Variant("type")] = Variant("function");
 			item[Variant("function")] = Variant(function);
+			// Ce que le service a joint à l'appel lui revient tel quel (signature de réflexion
+			// de Gemini) ; un autre service ou un autre modèle ne le reçoit pas.
+			const bool own_extra = call.extra.size() > 0 && call.extra_origin == p_dialect.origin;
+			if (own_extra) {
+				item[Variant("extra_content")] = Variant(call.extra);
+			}
+			if (p_dialect.thought_signatures && calls.size() == 0 && (!own_extra || _get(_dict(call.extra, "google"), "thought_signature").empty())) {
+				// Étape que ce modèle n'a pas signée : seul le premier appel d'une étape porte
+				// une signature, les appels parallèles qui suivent n'en ont pas.
+				Dictionary google = own_extra ? _dict(call.extra, "google").duplicate() : Dictionary();
+				google[Variant("thought_signature")] = Variant(THOUGHT_SIGNATURE_PLACEHOLDER);
+				Dictionary extra = own_extra ? call.extra.duplicate() : Dictionary();
+				extra[Variant("google")] = Variant(google);
+				item[Variant("extra_content")] = Variant(extra);
+			}
 			calls.push_back(Variant(item));
 		}
 		message[Variant("tool_calls")] = Variant(calls);
@@ -558,7 +573,13 @@ Dictionary build_request(bool p_anthropic_format, const String &p_model, const S
 String extract_error(const String &p_body, int p_http_status) {
 	const bool failed = p_http_status >= 400;
 	Variant parsed;
-	if (!JSON::parse(p_body, parsed) || parsed.get_type() != Variant::DICTIONARY) {
+	const bool readable = JSON::parse(p_body, parsed);
+	// Google enveloppe ses erreurs dans un tableau : [{ "error": { "code", "message", "status" } }].
+	if (readable && parsed.get_type() == Variant::ARRAY && parsed.as_array().size() > 0 && parsed.as_array()[0].get_type() == Variant::DICTIONARY && parsed.as_array()[0].as_dictionary().has(Variant("error"))) {
+		const Variant first = parsed.as_array()[0];
+		parsed = first;
+	}
+	if (!readable || parsed.get_type() != Variant::DICTIONARY) {
 		if (!failed) {
 			return String();
 		}
@@ -610,10 +631,23 @@ String extract_error(const String &p_body, int p_http_status) {
 	return str_strip(text);
 }
 
+const char *const THOUGHT_SIGNATURE_PLACEHOLDER = "skip_thought_signature_validator";
+
+bool wants_thought_signatures(const String &p_base_url) {
+	const String url = str_to_lower(p_base_url);
+	const size_t start = url.find("://");
+	const size_t host_start = start == String::npos ? 0 : start + 3;
+	const String host = url.substr(host_start, url.find('/', host_start) == String::npos ? String::npos : url.find('/', host_start) - host_start);
+	return _contains(host, "googleapis.com");
+}
+
 ErrorKind classify_error(int p_http_status, const String &p_text) {
 	const String text = str_to_lower(p_text);
 	if (_contains(text, "unexpected endpoint or method")) {
 		return ERROR_ENDPOINT;
+	}
+	if (_contains(text, "thought_signature") || _contains(text, "thought signature") || _contains(text, "thoughtsignature")) {
+		return ERROR_SIGNATURE;
 	}
 	const bool unsupported = _contains(text, "not support") || _contains(text, "unsupported") || _contains(text, "not enabled") || _contains(text, "no endpoints found that support") || _contains(text, "not available") || _contains(text, "not allowed");
 	const bool about_tools = _contains(text, "tool") || _contains(text, "function call");
@@ -720,7 +754,7 @@ bool parse_response(bool p_anthropic_format, const String &p_body, int p_http_st
 	if (!JSON::parse(p_body, parsed, &json_error) || parsed.get_type() != Variant::DICTIONARY) {
 		if (_blank(p_body)) {
 			r_error = "le service a renvoyé une réponse vide";
-		} else if (p_http_status >= 400) {
+		} else if (p_http_status >= 400 || !extract_error(p_body, p_http_status).empty()) {
 			r_error = extract_error(p_body, p_http_status);
 		} else {
 			r_error = "réponse illisible (" + (json_error.empty() ? String("ce n'est pas un objet JSON") : json_error) + ") : " + _plain_summary(p_body);
@@ -789,6 +823,10 @@ bool parse_response(bool p_anthropic_format, const String &p_body, int p_http_st
 		call.id = unique_call_id(_get(item, "id"), p_used_ids);
 		call.name = str_strip(_get(function, "name"));
 		_read_arguments(function.get(Variant("arguments"), Variant()), call);
+		// Gemini : signature de réflexion, à renvoyer avec l'appel dans les requêtes suivantes.
+		if (item.get(Variant("extra_content"), Variant()).get_type() == Variant::DICTIONARY) {
+			call.extra = item.get(Variant("extra_content"), Variant()).as_dictionary();
+		}
 		if (call.name.empty()) {
 			call.state = ToolCall::DONE;
 			call.is_error = true;
