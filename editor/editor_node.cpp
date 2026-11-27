@@ -160,7 +160,10 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 		if (style_dirty) {
 			_apply_style();
 		}
-		_run_test_commands(frame_count, false);
+		const bool test_frame = frame_count != test_last_frame;
+		if (test_frame) {
+			_run_test_commands(frame_count, false);
+		}
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			_process_event(event);
@@ -241,8 +244,15 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 		SDL_RenderClear(renderer);
 		ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
 
-		_run_test_commands(frame_count, true);
-		frame_count++;
+		if (test_frame) {
+			_run_test_commands(frame_count, true);
+			test_last_frame = frame_count;
+		}
+		if (test_hold_agent && (agent->is_busy() || agent->is_listing_models())) {
+			SDL_Delay(5); // l'image n'est pas comptée : le scénario attend la fin du travail
+		} else {
+			frame_count++;
+		}
 		const bool last_frame = quit_requested || (p_quit_after > 0 && frame_count >= p_quit_after);
 		if (last_frame && !p_screenshot.empty()) {
 			if (display->save_screenshot(p_screenshot) == OK) {
@@ -306,6 +316,8 @@ int EditorNode::run(bool p_has_project, const String &p_scene, int p_quit_after,
 //   move x y | down [bouton] | up [bouton] | click [bouton] | wheel dy
 //   key <touche SDL> [ctrl] [shift] | text <chaîne> | shot <fichier.bmp>
 //   resize <largeur> <hauteur> (taille de la fenêtre ; la taille minimale s'applique)
+//   agent <demande> | agent_modeles (bouton « Lister ») | agent_attendre (le compte des images
+//   s'arrête tant que MEX Agent travaille)
 // ---------------------------------------------------------------------------
 void EditorNode::_load_test_script() {
 	const char *path = SDL_getenv("MEX_EDITOR_TEST_SCRIPT");
@@ -368,6 +380,16 @@ void EditorNode::_run_test_commands(int p_frame, bool p_after_render) {
 				text += (text.empty() ? "" : " ") + word;
 			}
 			agent->submit(text);
+			continue;
+		}
+		if (command.name == "agent_attendre") {
+			// À partir d'ici, le scénario attend MEX Agent : « <image> agent_attendre ».
+			test_hold_agent = true;
+			continue;
+		}
+		if (command.name == "agent_modeles") {
+			// Comme le bouton « Lister » de la connexion : « <image> agent_modeles ».
+			agent->list_models();
 			continue;
 		}
 		if (command.name == "resize" && args.size() >= 2) {

@@ -15,6 +15,10 @@ class EditorNode;
 // le projet par des outils : lire et écrire des fichiers, consulter les classes du moteur,
 // régler le projet, lancer le jeu et lire sa sortie.
 //
+// Avec un serveur local (LM Studio, Ollama), MEX Agent demande au serveur si le modèle sait
+// appeler des outils. Sinon, il passe en mode « conversation » : mêmes échanges, sans outils,
+// dans une forme que le gabarit du modèle accepte (voir editor_agent_protocol.h).
+//
 // Les requêtes HTTPS passent par le programme « curl » du système (fourni avec Windows 10 et
 // suivants, macOS et la plupart des Linux) : MEX n'embarque pas de bibliothèque TLS.
 class EditorAgent {
@@ -57,6 +61,17 @@ public:
 		bool ui_open = false;
 		double ui_born = -1.0;
 	};
+	// Ce que l'on sait d'un modèle sur un service donné (une entrée par adresse et par modèle).
+	struct ModelProfile {
+		int tools = 0; // EditorAgentProtocol::ToolSupport : inconnu, oui, non
+		bool system_role = true; // faux : le gabarit du modèle refuse le rôle « system »
+		bool probed = false; // le serveur local a été interrogé
+		bool locked = false; // imposé par MEX_AGENT_TOOLS : aucune adaptation
+		bool announced = false; // l'absence d'outils a été signalée dans la conversation
+		bool context_warned = false;
+		int context = 0; // fenêtre de contexte du modèle chargé (0 : inconnue)
+		String origin; // d'où vient l'information, pour le message à l'utilisateur
+	};
 	struct Message {
 		enum Kind {
 			USER,
@@ -79,9 +94,11 @@ public:
 	void draw(); // fenêtre « MEX Agent »
 	void draw_connection_settings(); // aussi affiché dans les préférences de l'éditeur
 	void submit(const String &p_text);
+	void list_models(); // bouton « Lister » : GET <adresse>/models
 	void stop();
 	void new_conversation();
 	bool is_busy() const { return state != IDLE; }
+	bool is_listing_models() const { return listing_models; }
 	bool is_open() const { return open; }
 	void set_open(bool p_open) { open = p_open; }
 	void focus() { open = true; want_focus = true; }
@@ -96,7 +113,8 @@ public:
 	static const Provider &get_provider(int p_index);
 	const std::vector<Skill> &get_skills();
 
-	// Construction des requêtes et lecture des réponses, sans réseau (aussi utilisées par les tests).
+	// Construction des requêtes et lecture des réponses, sans réseau. Le travail est fait par
+	// EditorAgentProtocol, que vérifie le programme d'essais « mex-essais-agent ».
 	Dictionary build_request(const Provider &p_provider, const ProviderSettings &p_settings) const;
 	bool parse_response(const Provider &p_provider, const String &p_body, Message &r_message, String &r_error, String &r_stop_reason) const;
 
@@ -140,6 +158,9 @@ private:
 	String skills_project; // projet pour lequel les compétences ont été lues
 	std::unique_ptr<Job> job;
 	bool listing_models = false;
+	std::map<String, ModelProfile> profiles; // clé : adresse du service, saut de ligne, modèle
+	std::vector<int> probe_queue; // questions qui restent à poser au serveur local
+	bool probe_unreachable = false; // le serveur n'a pas répondu : la question sera reposée
 	// Contenu d'origine des fichiers touchés pendant la conversation (false : fichier créé).
 	std::map<String, std::pair<bool, String>> originals;
 	// Outil « lancer_jeu » en cours.
@@ -151,12 +172,19 @@ private:
 	String _effective_key(const Provider &p_provider, const ProviderSettings &p_settings) const;
 	String _effective_url(const Provider &p_provider, const ProviderSettings &p_settings) const;
 	String _effective_model(const Provider &p_provider, const ProviderSettings &p_settings) const;
-	String _system_prompt() const;
+	String _system_prompt(bool p_tools) const;
+	String _profile_key(const Provider &p_provider, const ProviderSettings &p_settings) const;
+	ModelProfile &_profile();
 	void _start_request();
-	void _start_job(const String &p_url, const String &p_body, bool p_models);
+	void _send_request();
+	void _start_probe();
+	void _probe_next();
+	bool _adapt_to_model(int p_error_kind);
+	void _start_job(const String &p_url, const String &p_body, int p_kind);
 	void _poll_job();
-	void _handle_response(const String &p_output, const String &p_errors, int p_exit_code, bool p_started);
-	void _handle_models(const String &p_output, int p_exit_code, bool p_started);
+	void _handle_response(const Job &p_job);
+	void _handle_probe(const Job &p_job);
+	void _handle_models(const Job &p_job);
 	void _process_tools();
 	void _finish_call(ToolCall &p_call, const String &p_result, bool p_is_error);
 	void _notice(const String &p_text);

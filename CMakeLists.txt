@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 # Le nom du projet est en minuscules exprès : project(MEX) créerait une variable MEX_VERSION
 # qui masquerait l'option du même nom ci-dessous dès la deuxième configuration.
-project(mex VERSION 0.11.1 LANGUAGES C CXX)
+project(mex VERSION 0.11.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -249,6 +249,26 @@ endif()
 if(MEX_BUILD_EDITOR AND MEX_BUILD_TEMPLATE)
 	add_executable(mex-jeu main/main.cpp main/game_runner.cpp ${CMAKE_CURRENT_BINARY_DIR}/licences.gen.cpp)
 	mex_setup_executable(mex-jeu)
+endif()
+
+# Essais du protocole de MEX Agent (adresses, requêtes, historiques, réponses, erreurs), sans
+# réseau ni éditeur : « mex-essais-agent », lancé par ctest et par le flux GitHub.
+if(MEX_BUILD_EDITOR AND NOT EMSCRIPTEN)
+	add_executable(mex-essais-agent tests/agent/essais_protocole.cpp editor/editor_agent_protocol.cpp)
+	target_link_libraries(mex-essais-agent PRIVATE mex_engine)
+	set_target_properties(mex-essais-agent PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+	foreach(config Debug Release RelWithDebInfo MinSizeRel)
+		string(TOUPPER ${config} config_upper)
+		set_target_properties(mex-essais-agent PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${config_upper} ${CMAKE_BINARY_DIR}/bin)
+	endforeach()
+	if(MINGW)
+		target_link_options(mex-essais-agent PRIVATE -static)
+	endif()
+	if(NOT MSVC)
+		target_compile_options(mex-essais-agent PRIVATE -Wall -Wno-unused-parameter)
+	endif()
+	enable_testing()
+	add_test(NAME protocole_agent COMMAND mex-essais-agent)
 endif()
 
 # Version console de l'éditeur sous Windows, comme godot.console.exe : un petit lanceur qui

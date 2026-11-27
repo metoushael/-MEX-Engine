@@ -130,7 +130,7 @@ Options CMake :
 | `MEX_VENDORED_SDL` | `OFF` | Télécharge SDL2 2.32.10 et la lie statiquement : l'exécutable ne dépend plus d'une SDL2 installée. Sous Linux, `libsdl2-dev` reste utile pour les en-têtes de X11, Wayland et de l'audio. |
 | `MEX_STATIC_RUNTIME` | `OFF` | GCC et MinGW : lie statiquement les bibliothèques du compilateur. Sous Windows, aucune DLL n'accompagne alors l'exécutable. |
 | `MEX_WINDOWS_GUI` | `ON` | Windows : pas de fenêtre de console. Les messages restent visibles quand le programme est lancé depuis un terminal. |
-| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.11.1). |
+| `MEX_VERSION` | vide | Numéro de version affiché par `mex --version`. Vide : celui de `project()` dans `CMakeLists.txt` (0.11.2). |
 | `MEX_SANITIZE` | `OFF` | AddressSanitizer et UBSan (GCC / Clang). |
 
 > Ce qui a été essayé : la compilation sous Linux avec GCC 14 et avec Clang 19 (libc++) ;
@@ -178,8 +178,8 @@ de l'éditeur** : il démarre l'éditeur dans le terminal, y affiche ses message
 scripts, erreurs, résultat d'un export) et rend son code de retour.
 
 ```bat
-mex-v0.11.1-windows-x86_64.console.exe --path mon_projet --export "*"
-mex-v0.11.1-windows-x86_64.console.exe --version
+mex-v0.11.2-windows-x86_64.console.exe --path mon_projet --export "*"
+mex-v0.11.2-windows-x86_64.console.exe --version
 ```
 
 Le lanceur cherche l'éditeur qui porte le même nom que lui sans `.console` : renommez les
@@ -1041,7 +1041,7 @@ votre clé d'API. Sans clé (ou sans service local), il ne répond pas.
 | OpenRouter (des centaines de modèles avec une seule clé) | `OPENROUTER_API_KEY` | `openrouter/auto` |
 | Mistral | clé à saisir | `mistral-large-latest` |
 | Google Gemini, DeepSeek, Groq | clé à saisir | à saisir |
-| Local (Ollama, `http://localhost:11434/v1`) | aucune | à saisir |
+| Local (Ollama `http://localhost:11434`, LM Studio `http://localhost:1234`) | aucune | à saisir (*Lister*) |
 | Autre service compatible avec l'API d'OpenAI | `MEX_AGENT_KEY` | à saisir |
 
 Bouton *Connexion* de l'onglet : choisissez le fournisseur, collez la clé (ou laissez le champ
@@ -1051,6 +1051,51 @@ des champs libres** : les noms proposés au départ ne sont que des suggestions,
 ceux que publie votre fournisseur. Les réglages sont enregistrés dans `agent.cfg`, dans le
 dossier de données de l'utilisateur : la clé y est écrite en clair, sur votre machine
 seulement ; elle n'est jamais placée dans le projet.
+
+### Modèles locaux : LM Studio et Ollama
+
+Fournisseur *Modèle local* : aucune clé, tout reste sur votre machine.
+
+| Serveur | Adresse à saisir | À faire avant |
+| --- | --- | --- |
+| LM Studio | `http://localhost:1234` | Onglet *Developer* : charger un modèle, *Start Server* |
+| Ollama | `http://localhost:11434` | `ollama pull <modèle>` (le service démarre avec Ollama) |
+| llama.cpp, Jan, KoboldCpp, vLLM... | l'adresse du serveur | selon le serveur |
+
+**Adresse.** Saisissez-la comme le serveur l'affiche : MEX Agent la ramène à la base de l'API
+compatible avec OpenAI. `/v1` est ajouté s'il manque et n'est jamais doublé ;
+`http://localhost:1234`, `localhost:1234`, `http://localhost:1234/v1/`,
+`http://localhost:1234/v1/chat/completions`, `http://localhost:1234/v1/models` et
+`http://localhost:11434/api/chat` mènent tous à `GET <base>/v1/models` (*Lister*) et à
+`POST <base>/v1/chat/completions`. L'adresse d'un service distant garde son chemin tel quel
+(certains n'ont pas de `/v1`) ; seul le point d'accès collé en trop est retiré.
+
+**Modèles avec ou sans outils.** À la première demande, MEX Agent interroge le serveur
+(`/api/v1/models` ou `/api/v0/models` pour LM Studio, `/api/show` pour Ollama) :
+
+- le modèle **sait appeler des outils** (Qwen 3, Qwen 2.5, Llama 3.1 et suivants, Mistral,
+  Mistral Nemo...) : l'agent complet, avec tous ses outils ;
+- le modèle **ne sait pas** (Gemma 3, Gemma 2, Phi...) : **mode conversation**. MEX Agent
+  le dit une fois dans la conversation, n'envoie plus d'outils, et donne à la conversation
+  la forme que le gabarit du modèle accepte : un message `system` puis une alternance stricte
+  `user` / `assistant`, sans message vide. Le modèle explique et écrit le code à copier ; il
+  ne lit pas le projet, ne le modifie pas et ne lance pas le jeu.
+
+Un serveur qui ne déclare rien (llama.cpp...) reçoit les outils ; s'il les refuse (« does not
+support tools », erreur du gabarit Jinja), la même demande repart aussitôt sans outils, puis
+sans message `system` si le gabarit le refuse aussi (les instructions ouvrent alors la
+première demande). *Nouvelle conversation* fait redemander ses capacités au serveur.
+
+**Contexte.** L'agent complet envoie ses instructions et la description de onze outils :
+comptez **16 000 jetons de contexte ou plus**. LM Studio charge souvent un modèle avec 4 096
+jetons (*Context Length*, au chargement du modèle) ; Ollama se règle avec la variable
+`OLLAMA_CONTEXT_LENGTH`. Quand LM Studio annonce un contexte plus petit que la requête,
+MEX Agent le signale.
+
+**En cas de refus**, le message donne l'adresse appelée, le code HTTP et la réponse du
+serveur. Pour voir chaque requête et chaque réponse en entier, lancez l'éditeur avec
+`MEX_AGENT_JOURNAL=<fichier>` (la clé d'API n'y est jamais écrite). `MEX_AGENT_TOOLS=0`
+impose le mode conversation, `MEX_AGENT_TOOLS=1` impose les outils sans interroger le serveur.
 
 **Compétences.** L'assistant dispose de fiches qu'il charge selon la demande :
 
@@ -1551,7 +1596,7 @@ ni licence), puis, dans le dossier du moteur :
 ```sh
 git init -b main
 git add .
-git commit -m "MEX 0.11.1"
+git commit -m "MEX 0.11.2"
 git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
 git push -u origin main
 ```
@@ -1561,7 +1606,7 @@ Ce qui est publié, selon ce qui déclenche le travail :
 | Déclencheur | Publication |
 | --- | --- |
 | Envoi sur `main` (ou `master`) | Préversion **« Dernière compilation »** (étiquette `continu`), remplacée à chaque envoi. Fichiers `mex-continu-...` |
-| Étiquette `v...` | Version numérotée, par exemple **MEX v0.11.1**. Fichiers `mex-v0.11.1-...` |
+| Étiquette `v...` | Version numérotée, par exemple **MEX v0.11.2**. Fichiers `mex-v0.11.2-...` |
 | Bouton *Run workflow* avec une version | La même version numérotée ; l'étiquette est créée pour vous |
 | Bouton *Run workflow*, champ vide | « Dernière compilation » |
 | Demande de fusion (*pull request*) | Rien : compilation et essais seulement |
@@ -1571,28 +1616,28 @@ Ce qui est publié, selon ce qui déclenche le travail :
 - en ligne de commande :
 
   ```sh
-  git tag v0.11.1
-  git push origin v0.11.1
+  git tag v0.11.2
+  git push origin v0.11.2
   ```
 
 - sans ligne de commande : onglet **Actions** du dépôt, *Compilation et publication*,
-  bouton **Run workflow**, saisissez `v0.11.1` dans *Version à publier*, validez.
+  bouton **Run workflow**, saisissez `v0.11.2` dans *Version à publier*, validez.
 
 La *Release* contient :
 
-- `mex-v0.11.1-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
-- `mex-v0.11.1-windows-x86_64.console.exe` : sa version console ;
-- `mex-v0.11.1-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
-- `mex-v0.11.1-windows-x86_64.zip`, `mex-v0.11.1-linux-x86_64.tar.gz`,
-  `mex-v0.11.1-macos-universal.tar.gz` : les archives complètes (éditeur, version console,
+- `mex-v0.11.2-windows-x86_64.exe` : l'éditeur pour Windows, **un seul fichier** ;
+- `mex-v0.11.2-windows-x86_64.console.exe` : sa version console ;
+- `mex-v0.11.2-linux-x86_64` : l'éditeur pour Linux, un seul fichier ;
+- `mex-v0.11.2-windows-x86_64.zip`, `mex-v0.11.2-linux-x86_64.tar.gz`,
+  `mex-v0.11.2-macos-universal.tar.gz` : les archives complètes (éditeur, version console,
   `mex-jeu`, et les modèles d'export de tous les systèmes dans `templates/`) ;
-- `mex-v0.11.1-web-wasm32.zip` : le modèle d'export web seul ;
-- `mex-v0.11.1-modeles-export.tpz` : le paquet des modèles d'export ;
-- `mex-v0.11.1-exemples.zip` : les projets d'exemple ;
+- `mex-v0.11.2-web-wasm32.zip` : le modèle d'export web seul ;
+- `mex-v0.11.2-modeles-export.tpz` : le paquet des modèles d'export ;
+- `mex-v0.11.2-exemples.zip` : les projets d'exemple ;
 - `SHA256SUMS.txt`, les empreintes de ces fichiers.
 
 Le numéro devient celui qu'affiche `mex --version`. Un numéro avec un tiret, par exemple
-`v0.11.1-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
+`v0.11.2-beta1`, donne une préversion. Si la compilation d'un système échoue, les autres
 fichiers sont tout de même publiés et la note de version le signale ; seul l'éditeur Linux
 est indispensable, car c'est lui qui assemble les fichiers.
 
@@ -1647,12 +1692,44 @@ attendue : un essai vérifie qu'un shader faux est bien signalé (de même pour 
 invalide). Les essais couvrent aussi l'écran tactile (boutons, stick, deux doigts), `JSON`
 et les chargements automatiques.
 
-`tests/agent/faux_service.py` est un faux service de modèles pour essayer MEX Agent sans clé
-ni connexion : il imite les API d'Anthropic et d'OpenAI, vérifie la forme des demandes
-reçues et fait dérouler à l'assistant un scénario qui emploie chacun de ses outils.
+**MEX Agent** a trois niveaux d'essais.
+
+1. `mex-essais-agent` (source : `tests/agent/essais_protocole.cpp`), compilé avec l'éditeur,
+   vérifie le protocole sans réseau : adresses, construction des requêtes, historiques (aucun
+   message vide, rôles qui alternent, résultats d'outils appariés), lecture des réponses JSON,
+   identifiants d'appels, erreurs HTTP, modèles sans outils, capacités annoncées par LM Studio
+   et Ollama. `ctest` le lance aussi.
+
+   ```sh
+   build/bin/mex-essais-agent        # BILAN AGENT : 359 vérifications réussies, 0 échec(s)
+   ```
+
+2. `tests/agent/essai_modeles_locaux.sh <mex>` lance l'éditeur contre
+   `tests/agent/faux_service.py`, un faux service qui imite les API d'Anthropic et d'OpenAI
+   sous `/v1`, les réponses de LM Studio et d'Ollama (chemin inattendu, « does not support
+   tools », erreur du gabarit Jinja de Gemma, capacités des modèles) et des pannes (page HTML
+   502, texte qui n'est pas du JSON, réponse vide). Dix-sept cas : adresses saisies de toutes
+   les façons, modèles sans outils, pannes, et le scénario complet qui emploie chaque outil,
+   dans les deux formats. Les réglages de l'utilisateur ne sont pas touchés.
+
+   ```sh
+   tests/agent/essai_modeles_locaux.sh build/bin/mex   # BILAN MODELES LOCAUX : ... 0 échec(s)
+   ```
+
+3. `tests/agent/essai_serveur_reel.sh <mex> <adresse> <modèle> [demandes]` fait la même chose
+   contre **votre** serveur et résume chaque échange : à joindre à un rapport de bogue.
+
+   ```sh
+   tests/agent/essai_serveur_reel.sh build/bin/mex http://localhost:1234 google/gemma-3-4b
+   tests/agent/essai_serveur_reel.sh build/bin/mex http://localhost:11434 qwen3:4b "Liste les fichiers du projet"
+   ```
+
+Le faux service se lance aussi à la main (troisième argument : `lmstudio`, `lmstudio-ancien`,
+`ollama` ou `inconnu`) :
 
 ```sh
-python3 tests/agent/faux_service.py 8765 journal.txt &
+python3 tests/agent/faux_service.py 8765 journal.txt lmstudio &
+MEX_AGENT_PROVIDER=local MEX_AGENT_URL=http://127.0.0.1:8765 MEX_AGENT_MODEL=faux-gemma mex -e --path copie_du_projet
 MEX_AGENT_PROVIDER=anthropic MEX_AGENT_URL=http://127.0.0.1:8765/v1 ANTHROPIC_API_KEY=cle-de-test mex -e --path copie_du_projet
 ```
 
@@ -1672,7 +1749,10 @@ une commande par ligne sous la forme `<image> <commande> [arguments]` :
 
 Commandes : `move x y`, `down`, `up`, `click [bouton]`, `wheel dy`, `key <touche> [ctrl] [shift]`,
 `keydown`, `keyup`, `text <chaîne>` (31 octets au plus par commande), `shot <fichier.bmp>`,
-`resize <largeur> <hauteur>` (demande une taille de fenêtre ; la taille minimale s'applique).
+`resize <largeur> <hauteur>` (demande une taille de fenêtre ; la taille minimale s'applique),
+`agent <demande>` (envoie une demande à MEX Agent), `agent_modeles` (le bouton *Lister*),
+`agent_attendre` (à partir de là, les images ne sont plus comptées tant que MEX Agent
+travaille : la suite du scénario attend la réponse du modèle).
 Avec `SDL_VIDEODRIVER=dummy`, l'éditeur tourne sans écran (et donc sans rendu 3D ; pour
 la 3D, utilisez un écran virtuel : `xvfb-run -a mex ...`).
 

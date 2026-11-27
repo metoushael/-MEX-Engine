@@ -177,6 +177,10 @@ private:
 		std::vector<String> args;
 	};
 	std::vector<TestCommand> test_commands;
+	// « agent_attendre » : les images ne sont plus comptées tant que MEX Agent travaille (un vrai
+	// modèle répond en un temps imprévisible).
+	bool test_hold_agent = false;
+	int test_last_frame = -1; // dernière image dont les commandes ont été exécutées
 	void _load_test_script();
 	void _run_test_commands(int p_frame, bool p_after_render);
 	void _defer(std::function<void()> p_action) { deferred.push_back(std::move(p_action)); }

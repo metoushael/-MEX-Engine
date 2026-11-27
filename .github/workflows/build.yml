@@ -148,6 +148,8 @@ jobs:
           cmake --build build
           mkdir -p dist
           cp build/bin/mex* dist/
+          # Le programme d'essais du protocole de MEX Agent n'est pas publié.
+          rm -f dist/mex-essais-agent*
           # Retire les symboles de débogage : exécutables plus légers.
           strip dist/mex*
 
@@ -170,6 +172,15 @@ jobs:
             codesign --force --sign - "dist/$exe"
             lipo -info "dist/$exe"
           done
+
+      # Protocole de MEX Agent, sans réseau : adresses, requêtes, historiques, réponses, erreurs.
+      - name: Essais du protocole de MEX Agent
+        run: |
+          essais=build/bin/mex-essais-agent
+          [ "$RUNNER_OS" = "macOS" ] && essais="build-$(uname -m)/bin/mex-essais-agent"
+          "$essais" > essais-agent.log 2>&1 || { cat essais-agent.log; echo "::error::Échec des essais du protocole de MEX Agent"; exit 1; }
+          tail -n 1 essais-agent.log
+          rm -f essais-agent.log
 
       - name: Dépendances de l'exécutable
         run: |
@@ -228,6 +239,14 @@ jobs:
           fi
           test -s demo3d.bmp
           rm -f demo3d.bmp essai3d.log
+
+      # L'éditeur converse avec un faux service qui imite LM Studio, Ollama, OpenAI et Anthropic :
+      # adresses saisies de toutes les façons, modèles sans outils, pannes, scénario avec outils.
+      - name: Essai de MEX Agent contre un faux service (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          export LIBGL_ALWAYS_SOFTWARE=1
+          bash tests/agent/essai_modeles_locaux.sh dist/mex
 
       # Les exécutables partent tels quels : la tâche « Assemblage » en fait les fichiers publiés.
       - name: Envoi des exécutables
