@@ -30,6 +30,49 @@ const float GIZMO_PICK_PIXELS = 8.0f;
 const ImU32 AXIS_COLORS[3] = { IM_COL32(235, 80, 80, 255), IM_COL32(110, 210, 80, 255), IM_COL32(80, 140, 245, 255) };
 const ImU32 AXIS_HIGHLIGHT = IM_COL32(255, 225, 90, 255);
 
+// Repère d'orientation (coin supérieur droit de la vue), en unités d'interface.
+const float COMPASS_RADIUS = 42.0f; // disque sensible
+const float COMPASS_AXIS = 29.0f; // distance du centre aux pastilles
+const float COMPASS_MARGIN = 10.0f;
+const real_t VIEW_TRANSITION = 0.2f; // durée du passage à une vue alignée, en secondes
+
+struct CompassHandle {
+	int axis = 0; // 0..5 : +X +Y +Z -X -Y -Z
+	float depth = 0; // vers la caméra quand positif
+	ImVec2 position;
+	float radius = 0;
+};
+
+inline ImVec2 _compass_center(const Vector2 &p_origin, const Size2 &p_size) {
+	const float offset = (COMPASS_RADIUS + COMPASS_MARGIN) * EditorUI::scale;
+	return ImVec2(p_origin.x + p_size.x - offset, p_origin.y + offset);
+}
+
+// Les six pastilles, de la plus lointaine à la plus proche de la caméra.
+inline void _compass_handles(const Basis &p_camera_basis, const ImVec2 &p_center, CompassHandle r_handles[6]) {
+	const Basis inv = p_camera_basis.transposed();
+	for (int i = 0; i < 6; i++) {
+		Vector3 axis;
+		axis[i % 3] = i < 3 ? 1.0f : -1.0f;
+		const Vector3 v = inv.xform(axis);
+		r_handles[i].axis = i;
+		r_handles[i].depth = v.z;
+		r_handles[i].position = ImVec2(p_center.x + v.x * COMPASS_AXIS * EditorUI::scale, p_center.y - v.y * COMPASS_AXIS * EditorUI::scale);
+		r_handles[i].radius = (i < 3 ? 9.0f : 7.0f) * EditorUI::scale;
+	}
+	std::sort(r_handles, r_handles + 6, [](const CompassHandle &a, const CompassHandle &b) { return a.depth < b.depth; });
+}
+
+inline real_t _wrap_angle(real_t p_angle) {
+	p_angle = std::fmod(p_angle, (real_t)Math_PI * 2.0f);
+	if (p_angle > (real_t)Math_PI) {
+		p_angle -= (real_t)Math_PI * 2.0f;
+	} else if (p_angle < -(real_t)Math_PI) {
+		p_angle += (real_t)Math_PI * 2.0f;
+	}
+	return p_angle;
+}
+
 inline ImTextureID _texture_id(RID p_texture) {
 	return (ImTextureID)(intptr_t)RenderingServer::get_singleton()->texture_get_native(p_texture);
 }
@@ -126,7 +169,9 @@ RenderingServer3D::CameraData EditorNode::_get_camera_3d() const {
 	cd.transform.origin = cam3d_target + cd.transform.basis.get_column(2) * cam3d_distance;
 	cd.orthogonal = cam3d_orthogonal;
 	cd.fov = VIEW_FOV;
-	cd.size = cam3d_distance; // hauteur visible en projection orthogonale
+	// Hauteur visible en projection orthogonale : la même qu'en perspective à la distance de
+	// la cible, pour que le changement de projection ne change pas le cadrage.
+	cd.size = 2.0f * std::tan(Math::deg_to_rad(VIEW_FOV) * 0.5f) * cam3d_distance;
 	cd.z_near = cam3d_orthogonal ? 0.01f : std::max(0.02f, cam3d_distance * 0.005f);
 	cd.z_far = std::max(2000.0f, cam3d_distance * 20.0f);
 	if (cam3d_orthogonal) {
@@ -366,22 +411,31 @@ void EditorNode::_draw_viewport_3d() {
 	if (ImGui::BeginPopup("##vue3d")) {
 		if (ImGui::MenuItem("Perspective", "Pavé num. 5", !cam3d_orthogonal)) {
 			cam3d_orthogonal = false;
+			cam3d_auto_orthogonal = false;
 		}
 		if (ImGui::MenuItem("Orthogonale", "Pavé num. 5", cam3d_orthogonal)) {
 			cam3d_orthogonal = true;
+			cam3d_auto_orthogonal = false;
 		}
 		ImGui::Separator();
-		if (ImGui::MenuItem("Face", "Pavé num. 1")) {
-			cam3d_yaw = 0;
-			cam3d_pitch = 0;
+		const String view_name = _get_view_name_3d();
+		if (ImGui::MenuItem("Face", "Pavé num. 1", view_name == "Face")) {
+			_look_along_axis_3d(2);
 		}
-		if (ImGui::MenuItem("Droite", "Pavé num. 3")) {
-			cam3d_yaw = (real_t)Math_PI * 0.5f;
-			cam3d_pitch = 0;
+		if (ImGui::MenuItem("Arrière", "Ctrl+Pavé num. 1", view_name == "Arrière")) {
+			_look_along_axis_3d(5);
 		}
-		if (ImGui::MenuItem("Dessus", "Pavé num. 7")) {
-			cam3d_yaw = 0;
-			cam3d_pitch = -(real_t)Math_PI * 0.5f;
+		if (ImGui::MenuItem("Droite", "Pavé num. 3", view_name == "Droite")) {
+			_look_along_axis_3d(0);
+		}
+		if (ImGui::MenuItem("Gauche", "Ctrl+Pavé num. 3", view_name == "Gauche")) {
+			_look_along_axis_3d(3);
+		}
+		if (ImGui::MenuItem("Dessus", "Pavé num. 7", view_name == "Dessus")) {
+			_look_along_axis_3d(1);
+		}
+		if (ImGui::MenuItem("Dessous", "Ctrl+Pavé num. 7", view_name == "Dessous")) {
+			_look_along_axis_3d(4);
 		}
 		ImGui::EndPopup();
 	}
@@ -533,10 +587,100 @@ static bool _gizmo_frame(const RenderingServer3D::CameraData &p_camera, const Si
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Vues alignées et repère d'orientation
+// ---------------------------------------------------------------------------
+void EditorNode::_set_view_3d(real_t p_yaw, real_t p_pitch) {
+	cam3d_from_yaw = cam3d_yaw;
+	cam3d_from_pitch = cam3d_pitch;
+	cam3d_to_yaw = cam3d_yaw + _wrap_angle(p_yaw - cam3d_yaw); // par le chemin le plus court
+	cam3d_to_pitch = p_pitch;
+	cam3d_anim_time = 0;
+	cam3d_animating = true;
+	// Comme dans Godot : une vue alignée passe en projection orthogonale, et tourner la vue
+	// ensuite rend la perspective. Un choix fait dans le menu « Vue » n'est pas touché.
+	if (!cam3d_orthogonal) {
+		cam3d_orthogonal = true;
+		cam3d_auto_orthogonal = true;
+	}
+}
+
+void EditorNode::_look_along_axis_3d(int p_handle) {
+	const real_t quarter = (real_t)Math_PI * 0.5f;
+	const real_t yaws[6] = { quarter, 0, 0, -quarter, 0, (real_t)Math_PI };
+	const real_t pitches[6] = { 0, -quarter, 0, 0, quarter, 0 };
+	if (p_handle < 0 || p_handle > 5) {
+		return;
+	}
+	// La vue est déjà celle-là : le clic donne la vue opposée.
+	const real_t yaw = cam3d_animating ? cam3d_to_yaw : cam3d_yaw;
+	const real_t pitch = cam3d_animating ? cam3d_to_pitch : cam3d_pitch;
+	if (std::abs(_wrap_angle(yaw - yaws[p_handle])) < 0.01f && std::abs(pitch - pitches[p_handle]) < 0.01f) {
+		p_handle = (p_handle + 3) % 6;
+	}
+	_set_view_3d(yaws[p_handle], pitches[p_handle]);
+}
+
+void EditorNode::_orbit_3d(real_t p_yaw_delta, real_t p_pitch_delta) {
+	if (p_yaw_delta == 0 && p_pitch_delta == 0) {
+		return;
+	}
+	cam3d_animating = false;
+	cam3d_yaw = _wrap_angle(cam3d_yaw + p_yaw_delta);
+	cam3d_pitch = Math::clamp(cam3d_pitch + p_pitch_delta, -(real_t)Math_PI * 0.5f, (real_t)Math_PI * 0.5f);
+	if (cam3d_auto_orthogonal) {
+		cam3d_orthogonal = false;
+		cam3d_auto_orthogonal = false;
+	}
+}
+
+String EditorNode::_get_view_name_3d() const {
+	const real_t quarter = (real_t)Math_PI * 0.5f;
+	const real_t yaw = _wrap_angle(cam3d_animating ? cam3d_to_yaw : cam3d_yaw);
+	const real_t pitch = cam3d_animating ? cam3d_to_pitch : cam3d_pitch;
+	const real_t tolerance = 0.01f;
+	if (std::abs(pitch + quarter) < tolerance && std::abs(yaw) < tolerance) {
+		return "Dessus";
+	}
+	if (std::abs(pitch - quarter) < tolerance && std::abs(yaw) < tolerance) {
+		return "Dessous";
+	}
+	if (std::abs(pitch) >= tolerance) {
+		return String();
+	}
+	if (std::abs(yaw) < tolerance) {
+		return "Face";
+	}
+	if (std::abs(yaw - quarter) < tolerance) {
+		return "Droite";
+	}
+	if (std::abs(yaw + quarter) < tolerance) {
+		return "Gauche";
+	}
+	if (std::abs(std::abs(yaw) - (real_t)Math_PI) < tolerance) {
+		return "Arrière";
+	}
+	return String();
+}
+
 void EditorNode::_viewport_3d_input(const Vector2 &p_origin, const Size2 &p_size, bool p_hovered) {
 	ImGuiIO &io = ImGui::GetIO();
 	const Vector2 mouse(io.MousePos.x - p_origin.x, io.MousePos.y - p_origin.y);
 	const bool window_focused_now = ImGui::IsWindowFocused();
+
+	// Passage progressif à une vue alignée.
+	if (cam3d_animating) {
+		cam3d_anim_time += io.DeltaTime;
+		const real_t t = Math::clamp(cam3d_anim_time / VIEW_TRANSITION, (real_t)0, (real_t)1);
+		const real_t eased = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+		cam3d_yaw = cam3d_from_yaw + (cam3d_to_yaw - cam3d_from_yaw) * eased;
+		cam3d_pitch = cam3d_from_pitch + (cam3d_to_pitch - cam3d_from_pitch) * eased;
+		if (t >= 1.0f) {
+			cam3d_yaw = _wrap_angle(cam3d_to_yaw);
+			cam3d_pitch = cam3d_to_pitch;
+			cam3d_animating = false;
+		}
+	}
 	const RenderingServer3D::CameraData camera = _get_camera_3d();
 
 	// Zoom.
@@ -562,24 +706,91 @@ void EditorNode::_viewport_3d_input(const Vector2 &p_origin, const Size2 &p_size
 			_select(nullptr);
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Keypad1, false)) {
-			cam3d_yaw = 0;
-			cam3d_pitch = 0;
+			_set_view_3d(0, 0);
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Keypad3, false)) {
-			cam3d_yaw = (real_t)Math_PI * 0.5f;
-			cam3d_pitch = 0;
+			_set_view_3d((real_t)Math_PI * 0.5f, 0);
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Keypad7, false)) {
-			cam3d_yaw = 0;
-			cam3d_pitch = -(real_t)Math_PI * 0.5f;
+			_set_view_3d(0, -(real_t)Math_PI * 0.5f);
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Keypad5, false)) {
 			cam3d_orthogonal = !cam3d_orthogonal;
+			cam3d_auto_orthogonal = false;
 		}
 		Node *selected = _get_selected();
 		if (selected && window_focused_now && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
 			_defer([this, selected]() { _delete_node(selected); });
 		}
+	}
+
+	// Vues opposées : Ctrl + pavé numérique.
+	if ((p_hovered || window_focused_now) && !io.WantTextInput && io.KeyCtrl && drag3d == DRAG3D_NONE) {
+		if (ImGui::IsKeyPressed(ImGuiKey_Keypad1, false)) {
+			_set_view_3d((real_t)Math_PI, 0);
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_Keypad3, false)) {
+			_set_view_3d(-(real_t)Math_PI * 0.5f, 0);
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_Keypad7, false)) {
+			_set_view_3d(0, (real_t)Math_PI * 0.5f);
+		}
+	}
+
+	// --- Repère d'orientation : un clic sur une pastille aligne la vue sur cet axe, glisser
+	// dans le disque fait tourner la vue (comme le repère de Godot) ---
+	if (drag3d == DRAG3D_NONE) {
+		compass_hover = -1;
+		if (p_hovered) {
+			const ImVec2 center = _compass_center(p_origin, p_size);
+			CompassHandle handles[6];
+			_compass_handles(camera.transform.basis, center, handles);
+			for (int i = 5; i >= 0 && compass_hover < 0; i--) { // la plus proche de la caméra d'abord
+				const float dx = io.MousePos.x - handles[i].position.x, dy = io.MousePos.y - handles[i].position.y;
+				const float reach = handles[i].radius + 2.0f * EditorUI::scale;
+				if (dx * dx + dy * dy <= reach * reach) {
+					compass_hover = handles[i].axis;
+				}
+			}
+			if (compass_hover < 0) {
+				const float dx = io.MousePos.x - center.x, dy = io.MousePos.y - center.y;
+				const float reach = COMPASS_RADIUS * EditorUI::scale;
+				if (dx * dx + dy * dy <= reach * reach) {
+					compass_hover = 6;
+				}
+			}
+		}
+		if (compass_hover >= 0) {
+			gizmo_hover = -1;
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				drag3d = DRAG3D_COMPASS;
+				compass_pressed = compass_hover;
+				compass_dragged = false;
+				compass_press_pos = mouse;
+			} else if (!ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+				return; // le clic ne doit ni sélectionner ni déplacer un nœud placé derrière
+			}
+		}
+	}
+	if (drag3d == DRAG3D_COMPASS) {
+		gizmo_hover = -1;
+		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			if (!compass_dragged && compass_pressed >= 0 && compass_pressed < 6) {
+				_look_along_axis_3d(compass_pressed);
+			}
+			drag3d = DRAG3D_NONE;
+			compass_pressed = -1;
+			compass_dragged = false;
+		} else {
+			const real_t threshold = 3.0f * EditorUI::scale;
+			if (!compass_dragged && (mouse - compass_press_pos).length() > threshold) {
+				compass_dragged = true;
+			}
+			if (compass_dragged) {
+				_orbit_3d(-io.MouseDelta.x * 0.012f, -io.MouseDelta.y * 0.012f);
+			}
+		}
+		return;
 	}
 
 	// --- Caméra : orbite (bouton droit ou du milieu), panoramique (Maj) ---
@@ -590,8 +801,7 @@ void EditorNode::_viewport_3d_input(const Vector2 &p_origin, const Size2 &p_size
 		if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
 			drag3d = DRAG3D_NONE;
 		} else if (drag3d == DRAG3D_ORBIT) {
-			cam3d_yaw -= io.MouseDelta.x * 0.008f;
-			cam3d_pitch = Math::clamp(cam3d_pitch - io.MouseDelta.y * 0.008f, -(real_t)Math_PI * 0.5f, (real_t)Math_PI * 0.5f);
+			_orbit_3d(-io.MouseDelta.x * 0.008f, -io.MouseDelta.y * 0.008f);
 		} else {
 			const real_t world_per_pixel = (camera.orthogonal ? camera.size : 2.0f * std::tan(Math::deg_to_rad(camera.fov) * 0.5f) * cam3d_distance) / std::max(p_size.y, 1.0f);
 			cam3d_target += (camera.transform.basis.get_column(1) * io.MouseDelta.y - camera.transform.basis.get_column(0) * io.MouseDelta.x) * world_per_pixel;
@@ -843,37 +1053,59 @@ void EditorNode::_viewport_3d_overlay(const Vector2 &p_origin, const Size2 &p_si
 		}
 	}
 
-	// Repère d'orientation (coin supérieur droit).
+	// Repère d'orientation (coin supérieur droit) : six pastilles cliquables, disque à glisser.
 	{
-		const ImVec2 c(p_origin.x + p_size.x - 44, p_origin.y + 44);
-		dl->AddCircleFilled(c, 34.0f, IM_COL32(20, 22, 26, 150));
-		const Basis inv = camera.transform.basis.transposed();
-		struct AxisDraw {
-			float depth;
-			ImVec2 tip;
-			ImU32 color;
-			const char *label;
-		};
-		const char *labels[3] = { "X", "Y", "Z" };
-		AxisDraw order[3];
-		for (int i = 0; i < 3; i++) {
-			Vector3 axis;
-			axis[i] = 1;
-			const Vector3 v = inv.xform(axis);
-			order[i] = { v.z, ImVec2(c.x + v.x * 26.0f, c.y - v.y * 26.0f), AXIS_COLORS[i], labels[i] };
+		const float scale = EditorUI::scale;
+		const ImVec2 c = _compass_center(p_origin, p_size);
+		const bool engaged = drag3d == DRAG3D_COMPASS || (drag3d == DRAG3D_NONE && compass_hover >= 0);
+		const int highlighted = drag3d == DRAG3D_COMPASS ? (compass_dragged ? -1 : compass_pressed) : (drag3d == DRAG3D_NONE ? compass_hover : -1);
+		dl->AddCircleFilled(c, COMPASS_RADIUS * scale, engaged ? IM_COL32(120, 128, 142, 110) : IM_COL32(20, 22, 26, 150), 48);
+		if (engaged) {
+			dl->AddCircle(c, COMPASS_RADIUS * scale, IM_COL32(255, 255, 255, 70), 48, 1.0f * scale);
 		}
-		std::sort(order, order + 3, [](const AxisDraw &a, const AxisDraw &b) { return a.depth < b.depth; });
-		for (const AxisDraw &a : order) {
-			dl->AddLine(c, a.tip, a.color, 2.0f);
-			dl->AddCircleFilled(a.tip, 7.0f, a.color);
-			const ImVec2 ts = ImGui::CalcTextSize(a.label);
-			dl->AddText(ImVec2(a.tip.x - ts.x * 0.5f, a.tip.y - ts.y * 0.5f), IM_COL32(20, 20, 20, 255), a.label);
+		CompassHandle handles[6];
+		_compass_handles(camera.transform.basis, c, handles);
+		static const char *const labels[6] = { "X", "Y", "Z", "-X", "-Y", "-Z" };
+		for (const CompassHandle &handle : handles) {
+			const bool positive = handle.axis < 3;
+			const bool hot = handle.axis == highlighted;
+			const ImU32 color = AXIS_COLORS[handle.axis % 3];
+			const int red = (int)(color & 0xFF), green = (int)((color >> 8) & 0xFF), blue = (int)((color >> 16) & 0xFF);
+			if (positive) {
+				dl->AddLine(c, handle.position, color, 2.0f * scale);
+				dl->AddCircleFilled(handle.position, handle.radius, color, 24);
+			} else {
+				// Côté négatif : pastille sombre cerclée de la couleur de l'axe.
+				dl->AddCircleFilled(handle.position, handle.radius, IM_COL32(red * 2 / 5 + 14, green * 2 / 5 + 14, blue * 2 / 5 + 14, 255), 24);
+				dl->AddCircle(handle.position, handle.radius, color, 24, 1.5f * scale);
+			}
+			if (hot) {
+				dl->AddCircle(handle.position, handle.radius + 1.5f * scale, IM_COL32(255, 255, 255, 235), 24, 2.0f * scale);
+			}
+			if (positive || hot) {
+				const ImVec2 ts = ImGui::CalcTextSize(labels[handle.axis]);
+				dl->AddText(ImVec2(std::floor(handle.position.x - ts.x * 0.5f), std::floor(handle.position.y - ts.y * 0.5f)), positive ? IM_COL32(20, 20, 20, 255) : IM_COL32(245, 245, 245, 255), labels[handle.axis]);
+			}
 		}
 	}
 
 	// Légende.
-	const String status = String(cam3d_orthogonal ? "Orthogonale" : "Perspective") + "   Clic droit : orbite   Maj + clic droit : déplacer   Molette : zoom";
-	dl->AddText(ImVec2(p_origin.x + 8, p_origin.y + p_size.y - 22), IM_COL32(200, 205, 215, 170), status.c_str());
+	const String view_name = _get_view_name_3d();
+	String status = (view_name.empty() ? String() : view_name + "  ·  ") + String(cam3d_orthogonal ? "Orthogonale" : "Perspective") + "   Clic droit : orbite   Maj + clic droit : déplacer   Molette : zoom";
+	// Souris sur le repère d'orientation : la légende dit ce que fera le clic.
+	const int compass_target = drag3d == DRAG3D_COMPASS ? (compass_dragged ? 6 : compass_pressed) : (drag3d == DRAG3D_NONE ? compass_hover : -1);
+	if (compass_target >= 0 && compass_target <= 6) {
+		static const char *const hints[7] = {
+			"Clic : vue de droite (+X)", "Clic : vue de dessus (+Y)", "Clic : vue de face (+Z)",
+			"Clic : vue de gauche (-X)", "Clic : vue de dessous (-Y)", "Clic : vue arrière (-Z)",
+			"Repère d'orientation"
+		};
+		status = String(hints[compass_target]) + (compass_target == 6 ? "   Glisser : tourner la vue   Clic sur un axe : vue alignée sur cet axe" : "   Glisser : tourner la vue");
+	}
+	// Ombre portée : la légende reste lisible sur un ciel clair.
+	const ImVec2 status_pos(p_origin.x + ES(8), p_origin.y + p_size.y - ES(22));
+	dl->AddText(ImVec2(status_pos.x + 1, status_pos.y + 1), IM_COL32(0, 0, 0, 150), status.c_str());
+	dl->AddText(status_pos, IM_COL32(225, 229, 236, 235), status.c_str());
 
 	if (!scene_root) {
 		const char *hint = "Scène vide : ajoutez un nœud racine depuis le dock « Scène ».";

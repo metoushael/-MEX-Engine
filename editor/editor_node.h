@@ -536,6 +536,7 @@ private:
 		DRAG3D_ORBIT,
 		DRAG3D_PAN,
 		DRAG3D_GIZMO,
+		DRAG3D_COMPASS, // repère d'orientation : clic sur un axe, ou glisser pour tourner la vue
 	};
 	bool view_3d = false; // le dock « Vue » affiche la scène en 3D
 	ObjectID view_mode_reference = 0; // nœud ayant déterminé le mode 2D/3D
@@ -546,6 +547,14 @@ private:
 	real_t cam3d_yaw = 0.65f;
 	real_t cam3d_pitch = -0.45f;
 	bool cam3d_orthogonal = false;
+	bool cam3d_auto_orthogonal = false; // projection orthogonale mise par une vue alignée : tourner la vue rend la perspective
+	bool cam3d_animating = false; // la caméra glisse vers une vue alignée
+	real_t cam3d_anim_time = 0;
+	real_t cam3d_from_yaw = 0, cam3d_from_pitch = 0, cam3d_to_yaw = 0, cam3d_to_pitch = 0;
+	int compass_hover = -1; // repère d'orientation : 0..5 = +X +Y +Z -X -Y -Z, 6 = le disque, -1 = rien
+	int compass_pressed = -1;
+	bool compass_dragged = false;
+	Vector2 compass_press_pos;
 	bool gizmo_local = false;
 	float snap_step_3d = 0.5f;
 	Drag3D drag3d = DRAG3D_NONE;
@@ -572,6 +581,10 @@ private:
 	Node *_pick_node_3d(const Vector3 &p_origin, const Vector3 &p_direction) const;
 	void _pick_recursive_3d(Node *p_node, const Vector3 &p_origin, const Vector3 &p_direction, real_t &r_best, Node *&r_found) const;
 	void _focus_selection_3d();
+	void _set_view_3d(real_t p_yaw, real_t p_pitch); // vue alignée, avec transition
+	void _look_along_axis_3d(int p_handle); // 0..5 = caméra placée du côté +X +Y +Z -X -Y -Z
+	void _orbit_3d(real_t p_yaw_delta, real_t p_pitch_delta);
+	String _get_view_name_3d() const; // « Face », « Dessus »... ou vide
 
 	// --- Jeu (mode « Jouer ») -----------------------------------------------------------
 	GameRunner game;
